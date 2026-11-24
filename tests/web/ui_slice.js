@@ -1,0 +1,22 @@
+const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const path = require('path');
+const fs = require('fs');
+(async () => {
+  const b = await chromium.launch({ executablePath: process.env.CHROME || undefined, args: ['--no-sandbox'] });
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, acceptDownloads: true });
+  const pg = await ctx.newPage(); const errs = []; pg.on('pageerror', e => errs.push(e.message)); pg.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  await pg.route('**/jszip.min.js', r => r.fulfill({ body: fs.readFileSync(path.join(__dirname, '../../web/vendor/jszip/jszip.min.js')), contentType: 'text/javascript' }));
+  await pg.route('**/fonts.googleapis.com/**', r => r.abort());
+  await pg.goto('http://localhost:' + (process.env.PORT || 8765) + '/index.html');
+  await pg.selectOption('#model', process.argv[2] || 'AD5X');
+  await pg.setInputFiles('#pick', (process.argv[3] || path.join(__dirname, '../fixtures/shapes.3mf')).split(','));
+  await pg.waitForTimeout(600);
+  const t = Date.now(); await pg.click('#slice');
+  await pg.waitForFunction(() => !document.getElementById('sliced').hidden || /Could not/.test(document.getElementById('status').textContent), null, { timeout: 180000 });
+  console.log('slice ms', Date.now() - t, '|', await pg.textContent('#status'), '|', (await pg.textContent('#slicedStats')).replace(/\s+/g, ' '));
+  await pg.$eval('#layer', (el) => { el.value = Math.round(el.max * 0.4); el.dispatchEvent(new Event('input')); }); await pg.waitForTimeout(200);
+  await pg.locator('#sliced').screenshot({ path: require('path').join(require('os').tmpdir(), 'sliced.png') });
+  const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#saveGcode')]);
+  await dl.saveAs(process.env.GCODE_OUT || require('path').join(require('os').tmpdir(), 'ui.gcode')); console.log('file', dl.suggestedFilename());
+  console.log(errs); await b.close();
+})();

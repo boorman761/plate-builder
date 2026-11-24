@@ -1,0 +1,61 @@
+name: Desktop app
+
+# Builds the Windows installer. Runs on every push to main (download it from the run's Artifacts),
+# and publishes a Release when you push a tag like v0.2.0.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python scripts/build.py
+      - run: npm ci
+        working-directory: desktop
+      - run: npm install --no-save playwright@1.48.2
+      - name: Web app and add-on tests
+        env: { CHROME: /usr/bin/google-chrome }
+        run: |
+          (cd dist/web && python -m http.server 8765 >/dev/null 2>&1 &)
+          sleep 1
+          node tests/web/ui_zip.js
+          node tests/web/ui_sites.js
+          node tests/web/ui_print.js "Creator 5 Pro"
+          node tests/web/ui_makerworld.js
+          node tests/web/ui_slice.js "Creator 5 Pro"
+      - name: Desktop app tests
+        env: { ELECTRON: desktop/node_modules/electron/dist/electron }
+        run: xvfb-run -a node tests/desktop/smoke.js | tee smoke.txt && ! grep -q FAIL smoke.txt
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run dist
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Plate-Builder-Setup
+          path: desktop/dist/*.exe
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/dist/*.exe

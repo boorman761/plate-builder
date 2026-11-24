@@ -1,0 +1,54 @@
+{
+  "name": "plate-builder-desktop",
+  "productName": "Plate Builder",
+  "version": "0.1.0",
+  "description": "Combine 3D model files onto one plate and convert them for Flashforge printers.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "build:web": "python ../scripts/build.py",
+    "start": "npm run build:web && electron .",
+    "dist": "npm run build:web && electron-builder --win --publish never"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.boorman.platebuilder",
+    "productName": "Plate Builder",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/web",
+        "to": "web"
+      },
+      {
+        "from": "../addon/src/bridge.js",
+        "to": "bridge.js"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Plate Builder"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/boorman761/plate-builder.git"
+  },
+  "author": "Phil Boorman"
+}

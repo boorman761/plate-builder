@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flashforge Plate Builder</title>
+<script src="jszip.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page: #E9EBEE; --panel: #FFFFFF; --ink: #22262B; --muted: #646B75; --line: #D3D7DC;
+    --go: #F5C518; --go-ink: #22262B; --go-press: #DDB00F;
+    --pei: #A87A2C; --pei-hi: #C99A45; --pei-lo: #7E5A1E; --bezel: #2B2F35;
+    --ok: #2F7D4F; --warn: #A35200; --bad: #B42318;
+    --r-s: 8px; --r-m: 12px;
+    --font: "Archivo", system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --page: #181B1F; --panel: #22262C; --ink: #ECEEF1; --muted: #9AA1AB; --line: #353B43; --bezel: #0F1114; --ok: #5CB07F; --warn: #E09A4B; --bad: #F07167; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 400 16px/1.5 var(--font); font-variation-settings: "wdth" 100; }
+  main { max-width: 620px; margin: 0 auto; padding: 20px 16px 200px; }
+  :focus-visible { outline: 3px solid var(--go); outline-offset: 2px; }
+  a { color: inherit; }
+
+  /* header */
+  .top { display: grid; gap: 12px; margin-bottom: 16px; }
+  h1 { margin: 0; font-size: 30px; line-height: 1.05; font-weight: 800; font-variation-settings: "wdth" 118; letter-spacing: -0.01em; }
+  .printer { display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; }
+  .printer label { display: block; font-size: 13px; color: var(--muted); font-variation-settings: "wdth" 85; margin: 0 0 3px 2px; }
+  #printerNote { margin: 2px 2px 0; font-size: 14px; color: var(--muted); }
+
+  /* the plate is the hero */
+  .plate { margin: 0 -4px 6px; }
+  .bezel { background: var(--bezel); border-radius: 16px; padding: 10px; box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 10px 24px -14px rgba(0,0,0,.55); }
+  canvas { width: 100%; display: block; border-radius: 8px; touch-action: manipulation; cursor: pointer; }
+  .platebar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 4px 0; min-height: 30px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tabs button { font: inherit; font-size: 14px; font-weight: 600; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .est { display: flex; align-items: baseline; gap: 10px; margin-left: auto; font-size: 14px; color: var(--muted); }
+  .est b { color: var(--ink); font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .est input[type=number] { width: 56px; padding: 3px 6px; font-size: 15px; border-radius: 6px; margin: 0 3px; }
+  .est label { white-space: nowrap; }
+  #layoutMsg { margin: 4px 4px 0; }
+
+  /* sections: separated by space and a rule, not boxed */
+  section.block { padding: 22px 0 6px; border-top: 1px solid var(--line); margin-top: 18px; }
+  h2 { margin: 0 0 12px; font-size: 19px; font-weight: 750; font-variation-settings: "wdth" 112; letter-spacing: -0.005em; }
+  h2 small { font-size: 14px; font-weight: 400; color: var(--muted); font-variation-settings: "wdth" 100; margin-left: 6px; }
+  label.f { display: block; font-size: 13px; color: var(--muted); font-variation-settings: "wdth" 85; margin: 0 0 3px 2px; }
+  select, input[type=number], input[type=text] { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: var(--r-s); border: 1px solid var(--line); background: var(--panel); color: var(--ink); appearance: none; -webkit-appearance: none; }
+  select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 30px; }
+  select:disabled { opacity: .55; }
+  .note { font-size: 14px; color: var(--muted); margin: 8px 2px 0; }
+  .warn { font-size: 14px; color: var(--warn); margin: 8px 2px 0; }
+  .empty { color: var(--muted); font-size: 15px; margin: 0; }
+  .chk { display: flex; align-items: center; gap: 10px; font-size: 15px; padding: 6px 0; }
+  .chk input { width: 20px; height: 20px; accent-color: var(--ink); flex: none; }
+
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: inherit; font-weight: 700; border: 0; border-radius: var(--r-m); padding: 13px 16px; cursor: pointer; font-variation-settings: "wdth" 108; }
+  .btn.primary { background: var(--go); color: var(--go-ink); width: 100%; font-size: 17px; }
+  .btn.primary:active { background: var(--go-press); }
+  .btn.primary:disabled { opacity: .4; cursor: default; }
+  .btn.add { width: 100%; background: transparent; color: var(--ink); border: 1.5px dashed var(--muted); margin-top: 6px; }
+  .btn.small { padding: 7px 11px; font-size: 14px; border-radius: var(--r-s); background: var(--panel); color: var(--ink); border: 1px solid var(--line); font-weight: 600; }
+  input[type=file] { display: none; }
+  .x { background: none; border: 0; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; padding: 2px 6px; }
+
+  /* models */
+  .file { display: grid; grid-template-columns: 60px 1fr; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .file:first-child { padding-top: 0; }
+  .thumb { width: 60px; height: 60px; border-radius: 10px; background: var(--panel) center/cover no-repeat; border: 1px solid var(--line); position: relative; }
+  .thumb b { position: absolute; left: -6px; top: -6px; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--page); font-size: 12px; display: grid; place-items: center; }
+  .file .t { font-weight: 700; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
+  .file .m { color: var(--muted); font-size: 14px; }
+  .made { margin-top: 2px; font-size: 14px; color: var(--muted); }
+  .made .ok { color: var(--ok); font-weight: 600; }
+  .file .ctl { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; align-items: center; }
+  .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden; background: var(--panel); }
+  .stepper button { border: 0; background: transparent; color: var(--ink); width: 38px; height: 38px; font-size: 20px; cursor: pointer; }
+  .stepper span { min-width: 30px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sizes { display: flex; gap: 8px; align-items: center; }
+  .sizes select { width: auto; padding: 8px 30px 8px 10px; font-size: 15px; }
+  .recent { margin-top: 18px; }
+  .rrow { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; padding: 6px 0; }
+  .rrow .thumb { width: 40px; height: 40px; border-radius: 8px; }
+  .rrow .t { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; } .rrow .m { font-size: 13px; color: var(--muted); }
+
+  /* colours: each swatch is a little spool */
+  .sw { width: 26px; height: 26px; border-radius: 50%; flex: none; display: inline-block; vertical-align: middle;
+        background: radial-gradient(circle, var(--page) 0 26%, rgba(0,0,0,.25) 27% 31%, transparent 32%), var(--c, #ccc);
+        box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); }
+  .colours { display: grid; gap: 10px; }
+  .crow { display: grid; grid-template-columns: 26px 1fr 128px; gap: 12px; align-items: center; }
+  .crow .lbl { font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+  .crow .lbl small { color: var(--muted); display: block; font-size: 13px; }
+  .slots { display: grid; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
+  .slot { display: grid; grid-template-columns: 62px 1fr; gap: 10px; align-items: center; }
+  .slot .tag { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .slot input[type=color] { width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; padding: 0; background: none; overflow: hidden; }
+  .slot input[type=color]::-webkit-color-swatch-wrapper { padding: 0; } .slot input[type=color]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* report */
+  .rep h4 { margin: 14px 0 6px; font-size: 15px; font-weight: 750; font-variation-settings: "wdth" 108; }
+  .rep h4.k { color: var(--ok); } .rep h4.r { color: var(--ink); } .rep h4.d { color: var(--muted); }
+  .rep ul { margin: 0; padding-left: 18px; font-size: 15px; } .rep li { margin: 4px 0; } .rep li span { color: var(--muted); }
+
+  /* find models */
+  .sites { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .sites a { display: block; padding: 10px 0; border-bottom: 1px solid var(--line); text-decoration: none; }
+  .sites a b { display: block; font-size: 15px; font-weight: 700; } .sites a span { display: block; font-size: 13px; color: var(--muted); }
+  details.block summary { cursor: pointer; font-weight: 700; font-size: 17px; font-variation-settings: "wdth" 110; }
+
+  .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn.second { background: var(--ink); color: var(--page); font-size: 16px; }
+  .btn.second:disabled { opacity: .4; cursor: default; }
+  #layer { width: 100%; margin: 14px 0 0; accent-color: var(--ink); }
+  .sstats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 2px 14px; font-size: 14px; color: var(--muted); }
+  .sstats b { color: var(--ink); font-size: 18px; font-weight: 750; margin-right: 4px; font-variant-numeric: tabular-nums; }
+  .sstats .pertool { display: flex; align-items: center; gap: 6px; width: 100%; }
+  .sstats .pertool .sw { width: 16px; height: 16px; }
+  #sliced .acts { margin-top: 6px; }
+  .steps { margin: 10px 0 0; padding-left: 20px; font-size: 14px; } .steps li { margin: 6px 0; }
+  code { font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  /* computers: the plate on the left, everything else beside it */
+  @media (min-width: 1100px) {
+    main { max-width: 1440px; display: grid; grid-template-columns: minmax(0, 1fr) 460px; column-gap: 36px; align-items: start; padding-bottom: 150px; }
+    main > * { grid-column: 2; }
+    main > header.top { grid-column: 1 / -1; }
+    main > .plate { grid-column: 1; grid-row: 2 / span 30; position: sticky; top: 16px; }
+    .plate .bezel { max-width: min(100%, calc(100vh - 230px)); margin: 0 auto; }
+    .plate .platebar, .plate #layoutMsg { max-width: min(100%, calc(100vh - 230px)); margin-left: auto; margin-right: auto; }
+    body > .bar { left: auto; right: max(0px, calc((100vw - 1440px) / 2)); width: 492px; }
+    body > .bar .in { max-width: none; }
+  }
+  /* bottom bar */
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--page) 24%); }
+  .bar .in { max-width: 620px; margin: 0 auto; display: grid; gap: 8px; }
+  .bar input[type=text] { border-radius: var(--r-m); }
+  .status { text-align: center; font-size: 14px; color: var(--muted); min-height: 20px; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--bad); }
+  .busy { opacity: .6; pointer-events: none; }
+
+  /* part sheet */
+  .sheet-bg { position: fixed; inset: 0; background: rgba(10,12,15,.5); display: flex; align-items: flex-end; justify-content: center; z-index: 10; }
+  .sheet { background: var(--page); width: 100%; max-width: 620px; border-radius: 20px 20px 0 0; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); display: grid; gap: 8px; }
+  @media (prefers-reduced-motion: no-preference) { .sheet { animation: rise .18s ease-out; } @keyframes rise { from { transform: translateY(24px); opacity: .6; } } }
+  .sheet h3 { margin: 0; font-size: 18px; font-weight: 750; font-variation-settings: "wdth" 110; }
+  .sheet .btn { width: 100%; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+  .sheet .row3 { display: flex; gap: 8px; flex-wrap: wrap; } .sheet .row3 .btn { flex: 1 1 auto; width: auto; }
+  .sheet .btn.danger { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <h1>Plate Builder</h1>
+    <div class="printer">
+      <div><label for="model">Printer</label><select id="model"></select></div>
+      <div><label for="nozzle">Nozzle</label><select id="nozzle"></select></div>
+    </div>
+    <p id="printerNote"></p>
+  </header>
+
+  <div class="plate">
+    <div class="bezel"><canvas id="bed" width="600" height="600" aria-label="Build plate preview. Tap a part to adjust it."></canvas></div>
+    <div class="platebar"><div class="tabs" id="tabs" hidden></div><div class="est" id="est" hidden></div></div>
+    <div id="layoutMsg"></div>
+  </div>
+
+  <section class="block" id="sliced" hidden>
+    <h2>Sliced <small>beta</small></h2>
+    <div class="bezel"><canvas id="layerView" width="600" height="600" aria-label="Sliced layer preview"></canvas></div>
+    <input type="range" id="layer" min="1" max="1" value="1" aria-label="Layer">
+    <p class="note" id="layerLabel"></p>
+    <div class="sstats" id="slicedStats"></div>
+    <label class="chk"><input type="checkbox" id="levelFirst" checked> Level the bed before printing</label>
+    <div class="acts"><button class="btn primary" id="sendPrinter">Send to printer</button><button class="btn second" id="saveGcode">Save G-code</button></div>
+    <p class="note" id="sendNote">Send to printer needs the Plate Builder add-on for Safari (the same one as the MakerWorld button). <a href="#" id="howSend">How to set it up</a></p>
+    <div id="sendHelp" hidden></div>
+    <p class="note">Sliced on this phone by three-slicer, a rebuild of OrcaSlicer's engine. It is new: check the first layer of your first few prints, and compare against Flash Studio if anything looks off.</p>
+  </section>
+
+  <section class="block" id="filesCard">
+    <h2>Models</h2>
+    <div id="files"></div>
+    <label class="btn add" for="pick">Add 3MF or STL files</label>
+    <input id="pick" type="file" accept=".3mf,.stl,.obj,model/3mf,model/stl,application/vnd.ms-package.3dmanufacturing-3dmodel+xml,application/sla,application/octet-stream" multiple>
+    <p class="note">3MF files bring their colours and settings. STL and OBJ files are plain shapes: pick their colour in Colours below.</p>
+    <div id="recent" hidden></div>
+  </section>
+
+  <section class="block">
+    <h2>Colours</h2>
+    <div id="colours"><p class="empty">Colours appear here once you add a model.</p></div>
+    <div class="slots" id="slots" hidden></div>
+  </section>
+
+  <section class="block">
+    <h2>Print settings</h2>
+    <div class="opts">
+      <div><label class="f" for="process">Print profile</label><select id="process"></select></div>
+      <div><label class="f" for="spacing">Gap between parts (mm)</label><input id="spacing" type="number" min="1" max="30" step="1" value="5" inputmode="numeric"></div>
+    </div>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="rotate" checked> Turn parts 90° to fit more</label>
+    <label class="chk"><input type="checkbox" id="keepTemps"> Use the model’s nozzle and bed temperatures</label>
+  </section>
+
+  <section class="block" id="report" hidden>
+    <h2>What changed</h2>
+    <div id="reportBody"></div>
+  </section>
+
+  <section class="block">
+    <h2>Find models</h2>
+    <div class="sites">
+      <a href="https://makerworld.com/" target="_blank" rel="noopener"><b>MakerWorld</b><span>Tap Send to Plate Builder on a model</span></a>
+      <a href="https://www.printables.com/" target="_blank" rel="noopener"><b>Printables</b><span>Use Download, not Slice</span></a>
+      <a href="https://www.crealitycloud.com/" target="_blank" rel="noopener"><b>Creality Cloud</b><span>Download the 3MF</span></a>
+      <a href="https://www.makeronline.com/" target="_blank" rel="noopener"><b>makeronline</b><span>Anycubic’s model site</span></a>
+      <a href="https://space.snapmaker.com/" target="_blank" rel="noopener"><b>Snapmaker Space</b><span>Download the 3MF</span></a>
+      <a href="https://www.thingiverse.com/" target="_blank" rel="noopener"><b>Thingiverse</b><span>Mostly STL, 3MF where offered</span></a>
+      <a href="https://www.myminifactory.com/" target="_blank" rel="noopener"><b>MyMiniFactory</b><span>Look for a 3MF in the files</span></a>
+      <a href="https://thangs.com/" target="_blank" rel="noopener"><b>Thangs</b><span>Search across many sites</span></a>
+      <a href="https://www.creativefabrica.com/" target="_blank" rel="noopener"><b>Creative Fabrica</b><span>3D printing files, STL works here</span></a>
+    </div>
+    <p class="note">3MF files keep the designer’s colours and settings. STL files work too, as single-colour shapes. Check each file’s licence before selling prints.</p>
+  </section>
+
+  <details class="block" style="border-top:1px solid var(--line);margin-top:18px;padding-top:18px">
+    <summary>Add the Safari add-on</summary>
+    <p class="note">The add-on does two things. It puts a Send to Plate Builder button on MakerWorld model pages, which fetches the print profile you’re looking at using your MakerWorld login. And it lets Send to printer reach your Flashforge over your Wi-Fi.</p>
+    <p class="note">1. Install the free Userscripts app from the App Store and open it once.<br>2. In Settings → Apps → Safari → Extensions → Userscripts, turn it on and allow it on all websites.<br>3. Open <a href="plate-builder.user.js" target="_blank">the add-on script</a> in Safari, tap the puzzle-piece icon in the address bar, choose Userscripts, then Install.<br>4. On MakerWorld, pick a print profile and tap the yellow button. If Safari asks about pop-ups, allow them for makerworld.com.</p>
+  </details>
+
+  <details class="block">
+    <summary>How to print it</summary>
+    <p class="note">Open the file in Flash Studio with File → Open Project. The printer, print profile and filaments are already set, and the author’s walls, infill and supports come across. Check the colours match what’s loaded, slice, and send it to the printer.</p>
+    <p class="note">Everything happens on this phone. Nothing is uploaded.</p>
+    <p class="note">Slicing uses <a href="https://github.com/kimgh06/Three_Slicer" target="_blank" rel="noopener">three-slicer</a>, an open-source engine rebuilt from OrcaSlicer, under the AGPL-3.0 licence (included as LICENSE-three-slicer.txt). This page’s own code is in its files and covered by the same licence.</p>
+  </details>
+</main>
+<div class="sheet-bg" id="sheetBg" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="bar"><div class="in">
+  <input type="text" id="fname" placeholder="File name" aria-label="File name" autocomplete="off" enterkeyhint="done">
+  <div class="acts"><button class="btn primary" id="go" disabled>Build 3MF</button><button class="btn second" id="slice" disabled>Slice</button></div>
+  <div class="status" id="status"></div>
+</div></div>
+
+<script type="application/json" id="profiles">__PROFILES__</script>
+<script>
+__CORE__
+</script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const PROFILES = JSON.parse($('profiles').textContent);
+  const S = { entries: [], manual: {}, slots: [], plateView: 0, layout: null, nextId: 1, slotEdits: {}, ov: {}, hit: [] };
+  const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+  // ---------- printer ----------
+  const models = [...new Set(PROFILES.printers.map((p) => p.model))];
+  const KEEP = '__keep';
+  $('model').innerHTML = models.map((m) => `<option>${m}</option>`).join('') + `<option value="${KEEP}">Bambu (keep original settings)</option>`;
+  $('model').value = store.get('ff.model') || 'AD5X';
+  function fillNozzles(keep) {
+    if ($('model').value === KEEP) { $('nozzle').innerHTML = '<option value="">From file</option>'; $('nozzle').disabled = true; return; }
+    $('nozzle').disabled = false;
+    const list = PROFILES.printers.filter((p) => p.model === $('model').value);
+    $('nozzle').innerHTML = list.map((p) => `<option value="${p.machine}">${p.nozzle} mm</option>`).join('');
+    const want = keep || list.find((p) => p.nozzle === '0.4')?.machine || list[0].machine;
+    $('nozzle').value = list.some((p) => p.machine === want) ? want : list[0].machine;
+  }
+  fillNozzles(store.get('ff.machine'));
+  const keepBase = () => S.entries.find((e) => e.src.project && /^BambuStudio-|^OrcaSlicer-/.test(e.src.app || '') && e.src.project.printer_settings_id);
+  function printer() {
+    if ($('model').value === KEEP) {
+      const b = keepBase(), pj = b ? b.src.project : {};
+      const fils = pj.filament_colour ? pj.filament_colour.map((c, i) => ({ i: i + 1, colour: FF.normColour(c), type: (pj.filament_type || [])[i] || '', name: (pj.filament_settings_id || [])[i] || '' })) : [];
+      return { keep: true, vendor: 'bbl', model: 'Bambu', nozzle: (pj.nozzle_diameter || ['0.4'])[0], base: b, baseFils: fils,
+        machine: pj.printer_settings_id || 'Bambu printer', area: pj.printable_area || ['0x0', '256x0', '256x256', '0x256'], exclude: pj.bed_exclude_area || [],
+        semm: true, extruders: 1, processes: [pj.print_settings_id || 'From file'], filaments: [] };
+    }
+    const p = PROFILES.printers.find((x) => x.machine === $('nozzle').value);
+    if (p.filaments.length) return p;
+    const sib = PROFILES.printers.find((x) => x.model === p.model && x.filaments.length);
+    return Object.assign({}, p, { filaments: sib ? sib.filaments : [] });
+  }
+  const maxSlots = (p) => (p.keep ? Math.min(16, Math.max(4, p.baseFils.length)) : p.semm ? 4 : p.extruders);
+  function bedOf(p) {
+    const pts = p.area.map((s) => s.split('x').map(Number));
+    return { x0: Math.min(...pts.map((a) => a[0])), y0: Math.min(...pts.map((a) => a[1])), x1: Math.max(...pts.map((a) => a[0])), y1: Math.max(...pts.map((a) => a[1])) };
+  }
+  function printerChanged() {
+    store.set('ff.model', $('model').value); if ($('model').value !== KEEP) store.set('ff.machine', $('nozzle').value);
+    const p = printer(), b = bedOf(p), n = maxSlots(p);
+    if (p.keep) {
+      $('printerNote').textContent = p.base ? `Keeps the ${p.machine.replace(/\s*@.*$/, '')} settings from “${p.base.src.title}”, ${Math.round(b.x1 - b.x0)} × ${Math.round(b.y1 - b.y0)} mm bed` : 'Add a MakerWorld (Bambu) 3MF. Its printer and print settings are kept as they are.';
+      fillProcesses(); autoSlots(true); refresh(); return;
+    }
+    $('printerNote').textContent = `${Math.round(b.x1 - b.x0)} × ${Math.round(b.y1 - b.y0)} mm bed, ` + (n > 1 ? (p.semm ? `up to ${n} colours with the ${p.vendor === 'bbl' ? 'AMS' : 'IFS'}` : `${n} toolheads`) : 'one colour');
+    fillProcesses(); autoSlots(true); refresh();
+  }
+  $('model').onchange = () => { fillNozzles(); printerChanged(); };
+  $('nozzle').onchange = printerChanged;
+
+  function fillProcesses() {
+    const p = printer(); const cur = $('process').value;
+    $('process').disabled = !!p.keep;
+    if (p.keep) { $('process').innerHTML = `<option>${esc(String(p.processes[0]).replace(/\s*@.*$/, ''))}</option>`; return; }
+    $('process').innerHTML = p.processes.map((n) => `<option value="${esc(n)}">${esc(n.replace(/\s*@.*$/, ''))}</option>`).join('');
+    const base = S.entries.find((e) => e.src.project);
+    const lh = base ? +base.src.project.layer_height : 0.2;
+    let pick = p.processes.find((n) => n === cur);
+    if (!pick || S.autoProcess) {
+      const want = base ? String(base.src.project.print_settings_id || '').split('@')[0].trim().toLowerCase() : '';
+      const lhOf = (n) => +FF.preset(PROFILES, 'process', n).layer_height;
+      const rank = (n) => (want && n.split('@')[0].trim().toLowerCase() === want ? 0 : 1);
+      pick = p.processes.slice().sort((a, b) => rank(a) - rank(b) || Math.abs(lhOf(a) - lh) - Math.abs(lhOf(b) - lh) || (/standard|optimal/i.test(b) - /standard|optimal/i.test(a)))[0];
+      S.autoProcess = true;
+    }
+    $('process').value = pick;
+  }
+  $('process').onchange = () => { S.autoProcess = false; refresh(); };
+
+  // ---------- files ----------
+  async function addFile(data, name, remember) {
+    setStatus(`Reading ${name}…`);
+    document.body.classList.add('busy');
+    try {
+      const src = await FF.readAny(data.slice(0), name);
+      if (!src.items.length) throw new Error('No printable objects found.');
+      const firstPlate = src.plateIds.length > 1 ? src.plateIds[0] : 'all';
+      S.entries.push({ id: S.nextId++, src, plate: firstPlate, copies: 1, scale: 100 });
+      setStatus('');
+      if (remember) Recent.save({ id: name + '|' + data.byteLength, name, title: src.title, designer: src.meta.Designer || '', added: Date.now(), data, thumb: src.thumbs[src.plateIds[0]] || '' }).then(renderRecent);
+    } catch (e) {
+      console.error(e); setStatus(`${name}: ${e.message || 'could not read this file'}`, 'err');
+    } finally { document.body.classList.remove('busy'); }
+  }
+  function filesChanged() { S.autoProcess = true; if ($('model').value === KEEP) { printerChanged(); return; } fillProcesses(); autoSlots(true); refresh(); }
+  $('pick').onchange = async (ev) => {
+    const files = [...ev.target.files]; ev.target.value = '';
+    for (const f of files) await addFile(await f.arrayBuffer(), f.name, true);
+    filesChanged();
+  };
+
+  // Recently added files, kept on this device so a plate can be rebuilt without downloading again.
+  const Recent = {
+    KEEP: 10,
+    db() { return this._db || (this._db = new Promise((res, rej) => { try { const r = indexedDB.open('ffpb', 1); r.onupgradeneeded = () => r.result.createObjectStore('files', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } })); },
+    async tx(mode, fn) { const db = await this.db(); return new Promise((res, rej) => { const t = db.transaction('files', mode); const st = t.objectStore('files'); const out = fn(st); t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error); }); },
+    async all() { try { const list = await this.tx('readonly', (st) => st.getAll()); return (list || []).sort((x, y) => y.added - x.added); } catch (e) { return []; } },
+    async save(rec) { try { await this.tx('readwrite', (st) => st.put(rec)); const list = await this.all(); for (const old of list.slice(this.KEEP)) await this.del(old.id); } catch (e) {} },
+    async get(id) { try { return await this.tx('readonly', (st) => st.get(id)); } catch (e) { return null; } },
+    async del(id) { try { await this.tx('readwrite', (st) => st.delete(id)); } catch (e) {} },
+  };
+  async function renderRecent() {
+    const list = await Recent.all(); const box = $('recent');
+    if (!list.length) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = `<div class="recent"><label class="f">Recent files (on this phone)</label>` + list.map((r) => `<div class="rrow">
+      <div class="thumb" style="${r.thumb ? `background-image:url(${r.thumb})` : ''}"></div>
+      <div><div class="t">${esc(r.title)}</div><div class="m">${esc(r.designer ? 'by ' + r.designer : r.name)}, added ${new Date(r.added).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</div></div>
+      <div style="display:flex;gap:4px"><button class="btn small" data-radd="${esc(r.id)}">Add</button><button class="x" data-rdel="${esc(r.id)}" aria-label="Forget">×</button></div></div>`).join('') + '</div>';
+  }
+  $('recent').onclick = async (ev) => {
+    const t = ev.target.closest('button'); if (!t) return;
+    if (t.dataset.rdel) { await Recent.del(t.dataset.rdel); renderRecent(); return; }
+    if (t.dataset.radd) {
+      const r = await Recent.get(t.dataset.radd); if (!r) return;
+      r.added = Date.now(); Recent.save(r).then(renderRecent);
+      await addFile(r.data, r.name, false); filesChanged();
+    }
+  };
+  renderRecent();
+
+  // Files sent from MakerWorld by the "Send to Plate Builder" Safari userscript.
+  (function makerWorldInbox() {
+    const okOrigin = (o) => /^https:\/\/([a-z0-9-]+\.)?makerworld\.com$/i.test(o);
+    const opener = window.opener;
+    window.addEventListener('message', async (ev) => {
+      if (!okOrigin(ev.origin) || !ev.data || ev.data.type !== 'pb-file') return;
+      const { name, data } = ev.data;
+      if (!(data instanceof ArrayBuffer)) return;
+      try { ev.source && ev.source.postMessage({ type: 'pb-got' }, ev.origin); } catch (e) {}
+      await addFile(data, name || 'makerworld.3mf', true); filesChanged();
+      setStatus(`Added ${name} from MakerWorld. Add more, or tap Build 3MF.`, 'ok');
+    });
+    const host = window.parent !== window ? window.parent : opener;
+    if (!host) return;
+    // say hello a few times, in case MakerWorld's page is still waiting on its download
+    let n = 0;
+    const hello = () => { for (const o of ['https://makerworld.com', 'https://www.makerworld.com']) { try { host.postMessage({ type: 'pb-ready' }, o); } catch (e) {} } if (++n < 40) setTimeout(hello, 500); };
+    setTimeout(hello, 0);
+  })();
+
+  // "Made for Bambu Lab P1S · 0.4 mm · 0.20mm Standard (Bambu Studio)"
+  function madeLine(src) {
+    const m = src.made, p = printer();
+    if (src.plain) return 'Plain shape, no colours or settings. Uses Flashforge defaults.';
+    if (!m) return `No printer settings in this file${src.slicer ? ', made in ' + esc(src.slicer) : ''}`;
+    const same = !p.keep && m.printer && m.printer.toLowerCase().replace(/^flashforge\s*/, '') === String(p.model).toLowerCase();
+    const what = esc(m.printer) + (m.nozzle ? `, ${esc(m.nozzle)} mm nozzle` : '') + (m.profile ? `, ${esc(m.profile)}` : '');
+    return same ? `<span class="ok">Made for your ${esc(m.printer)}</span>${m.profile ? `, ${esc(m.profile)}` : ''}` : `Made for ${what}${m.slicer ? ` in ${esc(m.slicer)}` : ''}`;
+  }
+  // Files without a picture (STL, OBJ, some 3MFs) get one drawn from the model itself.
+  function madeThumb(i) {
+    const e = S.entries[i]; if (e.thumbGen !== undefined) return e.thumbGen;
+    e.thumbGen = '';
+    try {
+      const it = e.src.items[0]; if (!it) return '';
+      const bb = FF.bboxOf(e.src, it.oid, it.T), size = Math.max(bb.x1 - bb.x0, bb.y1 - bb.y0) || 1, sc = 112 / size;
+      const pl = { ei: i, it, T: it.T, rect: { x: bb.x0, y: bb.y0, w: bb.x1 - bb.x0, h: bb.y1 - bb.y0 } };
+      const img = partImage(pl, sc, 1, () => '#C9CDD3', 'thumb');
+      if (img) { const c = document.createElement('canvas'); c.width = c.height = 120; c.getContext('2d').drawImage(img, (120 - img.width) / 2, (120 - img.height) / 2); e.thumbGen = c.toDataURL('image/png'); }
+    } catch (err) { e.thumbGen = ''; }
+    return e.thumbGen;
+  }
+  function renderFiles() {
+    if (!S.entries.length) { $('files').innerHTML = ''; return; }
+    $('files').innerHTML = S.entries.map((e, i) => {
+      const src = e.src; const plates = src.plateIds;
+      const thumb = src.thumbs[e.plate === 'all' ? plates[0] : e.plate] || madeThumb(i) || '';
+      const objs = FF.selectedItems(e).length;
+      const plateSel = plates.length > 1
+        ? `<select data-plate="${i}">${plates.map((p) => `<option value="${p}" ${String(e.plate) === String(p) ? 'selected' : ''}>Plate ${p} (${src.items.filter((x) => x.plate === p).length} parts)</option>`).join('')}<option value="all" ${e.plate === 'all' ? 'selected' : ''}>All plates</option></select>`
+        : `<span class="m">${objs} part${objs === 1 ? '' : 's'}</span>`;
+      return `<div class="file">
+        <div class="thumb" style="${thumb ? `background-image:url(${thumb})` : ''}"><b aria-hidden="true">${i + 1}</b></div>
+        <div>
+          <div style="display:flex;justify-content:space-between;gap:8px"><div class="t">${esc(src.title)}</div><button class="x" data-del="${i}" aria-label="Remove">×</button></div>
+          <div class="m">${esc(src.meta.Designer ? 'by ' + src.meta.Designer : src.fileName)}</div>
+          <div class="made">${madeLine(src)}</div>
+          <div class="ctl"><div style="grid-column:1/-1">${plateSel}</div><span class="m">Copies</span>
+            <span class="stepper"><button data-dec="${i}" aria-label="Fewer">−</button><span>${e.copies}</span><button data-inc="${i}" aria-label="More">+</button></span>
+            <span class="sizes"><span class="m">Size</span><select data-scale="${i}" aria-label="Size">${[50, 60, 70, 75, 80, 90, 100, 110, 120, 125, 150, 175, 200].map((v) => `<option value="${v}" ${+e.scale === v ? 'selected' : ''}>${v}%</option>`).join('')}</select></span>
+            <button class="btn small" data-fill="${i}">Fill plate</button></div>
+        </div></div>`;
+    }).join('');
+  }
+  $('files').onclick = (ev) => {
+    const t = ev.target.closest('button'); if (!t) return;
+    if (t.dataset.del) { S.entries.splice(+t.dataset.del, 1); if ($('model').value === KEEP) { printerChanged(); return; } autoSlots(true); }
+    if (t.dataset.fill) { fillPlate(+t.dataset.fill); return; }
+    if (t.dataset.inc) S.entries[+t.dataset.inc].copies = Math.min(200, S.entries[+t.dataset.inc].copies + 1);
+    if (t.dataset.dec) S.entries[+t.dataset.dec].copies = Math.max(1, S.entries[+t.dataset.dec].copies - 1);
+    refresh();
+  };
+  $('files').onchange = (ev) => { const t = ev.target; if (t.dataset.scale) { S.entries[+t.dataset.scale].scale = +t.value; refresh(); return; } if (t.dataset.plate) { S.entries[+t.dataset.plate].plate = t.value === 'all' ? 'all' : +t.value; autoSlots(true); refresh(); } };
+
+  // Most copies of one model that still fit on one plate alongside everything else.
+  function fillPlate(i) {
+    const e = S.entries[i], was = e.copies;
+    const fits = (n) => { e.copies = n; computeLayout(); return S.layout.plateCount <= 1 && !S.layout.tooBig.length; };
+    if (!fits(1)) { e.copies = was; refresh(); setStatus('Even one more copy won’t fit with everything else on this plate.', 'err'); return; }
+    let lo = 1, hi = 2;
+    while (hi <= 200 && fits(hi)) { lo = hi; hi *= 2; }
+    hi = Math.min(hi, 201);
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (fits(mid)) lo = mid; else hi = mid; }
+    e.copies = lo; refresh(); setStatus(`${lo} cop${lo === 1 ? 'y' : 'ies'} of “${e.src.title}” fit on the plate.`, 'ok');
+  }
+
+  // ---------- colours ----------
+  function colourRows() {
+    const rows = [];
+    S.entries.forEach((e) => {
+      const oids = [...new Set(FF.selectedItems(e).map((i) => i.oid))];
+      for (const f of FF.usedFilaments(e.src, oids)) {
+        const fil = e.src.filaments[f - 1] || { colour: '#DDDDDD', type: 'PLA', name: '' };
+        rows.push({ key: e.id + '|' + f, entry: e, f, colour: fil.colour, type: fil.type, name: fil.name });
+      }
+    });
+    return rows;
+  }
+  const dist = (a, b) => { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); const x = p(a), y = p(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+  // Give each colour a slot: same colour shares a slot; extras go to the closest colour.
+  // ---------- what's loaded on the printer (remembered on this device) ----------
+  const loadedKey = (p) => 'ff.loaded.' + p.model;
+  function getLoaded(p) { try { return JSON.parse(store.get(loadedKey(p)) || 'null'); } catch (e) { return null; } }
+  function setLoaded(p, list) { store.set(loadedKey(p), JSON.stringify(list)); }
+  const useLoaded = (p) => !p.keep && maxSlots(p) > 1 && store.get('ff.useLoaded.' + p.model) === '1';
+  const slotWord = (p) => (p.keep || p.vendor === 'bbl' ? 'AMS' : p.semm ? 'IFS' : 'Toolhead');
+  function loadedSlots(p) {
+    const n = maxSlots(p); const saved = getLoaded(p) || [];
+    const defaults = ['#FFFFFF', '#000000', '#E53935', '#1E88E5'];
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const s = saved[i] || {};
+      const preset = s.preset && p.filaments.includes(s.preset) ? s.preset : FF.matchFilament(PROFILES, p, { type: 'PLA', name: 'basic' });
+      out.push({ colour: s.colour || (S.slots[i] && S.slots[i].colour) || defaults[i % 4], preset });
+    }
+    return out;
+  }
+  function autoSlots(reset) {
+    const p = printer(), n = maxSlots(p), rows = colourRows();
+    if (reset) S.manual = Object.fromEntries(Object.entries(S.manual).filter(([k, v]) => v <= n && rows.some((r) => r.key === k)));
+    if (useLoaded(p)) {
+      S.slots = loadedSlots(p); S.assign = {};
+      for (const r of rows) S.assign[r.key] = S.manual[r.key] || (S.slots.map((x, k) => [dist(x.colour, r.colour), k]).sort((a, b) => a[0] - b[0])[0][1] + 1);
+      S.rows = rows; return;
+    }
+    const slots = []; S.assign = {};
+    for (const r of rows) {
+      let s = S.manual[r.key];
+      if (!s) {
+        let i = slots.findIndex((x) => x.colour.toUpperCase() === r.colour.toUpperCase());
+        if (i < 0 && slots.length < n) { slots.push({ colour: r.colour, row: r }); i = slots.length - 1; }
+        if (i < 0) i = slots.map((x, k) => [dist(x.colour, r.colour), k]).sort((a, b) => a[0] - b[0])[0][1];
+        s = i + 1;
+      }
+      while (slots.length < s) slots.push({ colour: r.colour, row: r });
+      S.assign[r.key] = s;
+    }
+    S.slots = slots.map((x, i) => {
+      const prev = S.slotEdits[i + 1] || {};
+      const preset = p.keep ? (prev.preset && +prev.preset <= p.baseFils.length ? prev.preset : String(keepMatch(p, x.row)))
+        : prev.preset && p.filaments.includes(prev.preset) ? prev.preset : FF.matchFilament(PROFILES, p, x.row);
+      return { colour: prev.colour || x.colour, preset, auto: !prev.preset };
+    });
+    S.rows = rows;
+  }
+  // Which of the kept project's filaments a colour should copy its settings from.
+  function keepMatch(p, row) {
+    if (!p.baseFils.length) return 1;
+    if (p.base && row.entry === p.base) return row.f;
+    const nb = (n) => String(n || '').split('@')[0].trim().toLowerCase();
+    const byName = p.baseFils.find((f) => nb(f.name) && nb(f.name) === nb(row.name));
+    if (byName) return byName.i;
+    const byType = p.baseFils.find((f) => String(f.type).toUpperCase() === String(row.type).toUpperCase());
+    return byType ? byType.i : 1;
+  }
+  // The Plate Builder add-on (a Safari userscript) can reach the printer on your Wi-Fi; this page can't.
+  // It marks the page with data-pb-bridge and answers messages posted to this window.
+  const Bridge = {
+    here: () => !!document.documentElement.dataset.pbBridge,
+    seq: 0,
+    ask(msg, ms) {
+      return new Promise((res, rej) => {
+        const id = 'q' + (++this.seq) + Date.now();
+        const done = (fn, v) => { clearTimeout(t); window.removeEventListener('message', on); fn(v); };
+        const on = (ev) => {
+          if (ev.origin !== location.origin || !ev.data || ev.data.id !== id) return;
+          if (ev.data.type === 'pb-progress') { setStatus(ev.data.text); return; }
+          if (ev.data.type === 'pb-answer') done(res, ev.data);
+        };
+        const t = setTimeout(() => done(rej, new Error('the add-on didn’t answer')), ms || 120000);
+        window.addEventListener('message', on);
+        window.postMessage(Object.assign({ id }, msg), location.origin);
+      });
+    },
+  };
+  // re-draw once the add-on has started, so its buttons appear
+  window.addEventListener('pb-bridge', () => { try { renderColours(); } catch (e) {} });
+  function renderColours() {
+    const p = printer(), n = maxSlots(p), rows = S.rows || [];
+    if (!rows.length) { $('colours').innerHTML = '<p class="empty">Add a model to see its colours.</p>'; $('slots').hidden = true; return; }
+    const loaded = useLoaded(p);
+    const slotOpts = (sel) => Array.from({ length: n }, (_, i) => `<option value="${i + 1}" ${sel === i + 1 ? 'selected' : ''}>${slotWord(p)} ${i + 1}</option>`).join('');
+    $('colours').innerHTML = `<div class="colours">${rows.map((r) => `<div class="crow"><span class="sw" style="--c:${r.colour}"></span>
+      <span class="lbl">${esc(r.type)} ${esc(r.colour)}<small>${esc(r.entry.src.title)} · filament ${r.f}</small></span>
+      <select data-row="${esc(r.key)}" ${n === 1 ? 'disabled' : ''}>${slotOpts(S.assign[r.key])}</select></div>`).join('')}</div>`
+      + (n === 1 ? '<p class="note">This printer has one nozzle and no colour changer, so everything prints in one filament.</p>' : '');
+    const used = new Set(loaded ? S.slots.map((_, i) => i + 1) : Object.values(S.assign));
+    const presetOpts = (sel) => p.keep ? p.baseFils.map((f) => `<option value="${f.i}" ${String(f.i) === String(sel) ? 'selected' : ''}>${esc(f.name.replace(/\s*@.*$/, '') || f.type)}</option>`).join('') : p.filaments.map((f) => `<option value="${esc(f)}" ${f === sel ? 'selected' : ''}>${esc(f.replace(/\s*@.*$/, ''))}</option>`).join('');
+    $('slots').hidden = false;
+    const toggle = !p.keep && n > 1 ? `<label class="chk" style="margin-bottom:10px"><input type="checkbox" id="useLoaded" ${loaded ? 'checked' : ''}> Match colours to what's loaded on the printer</label>` : '';
+    const title = loaded ? `Loaded in each ${slotWord(p) === 'Toolhead' ? 'toolhead' : slotWord(p) + ' slot'} (remembered on this phone)` : p.keep ? 'AMS slots (settings copied from the file’s filaments)' : p.semm ? `What to load in the ${p.vendor === 'bbl' ? 'AMS' : 'IFS'}` : n > 1 ? 'What to load in each toolhead' : 'Filament';
+    const usedNow = new Set(Object.values(S.assign));
+    $('slots').innerHTML = toggle + `<label class="f">${title}</label>` + S.slots.map((s, i) => used.has(i + 1) ? `<div class="slot">
+        <span class="tag"><input type="color" value="${s.colour}" data-col="${i + 1}" aria-label="Slot ${i + 1} colour">${i + 1}</span>
+        <select data-preset="${i + 1}">${presetOpts(s.preset)}</select></div>` : '').join('')
+      + (loaded ? `<p class="note">${usedNow.size} of ${n} used by these models. Each colour goes to the closest loaded colour; change it above if needed.</p>` : '')
+      + (loaded && Bridge.here() ? `<button class="btn small" type="button" id="readLoaded">Read what’s loaded from the printer</button>` : '');
+  }
+  $('slots').addEventListener('click', async (ev) => {
+    if (!ev.target.closest('#readLoaded')) return;
+    const p = printer();
+    try {
+      setStatus('Asking the printer what’s loaded…');
+      const r = await Bridge.ask({ type: 'pb-read-loaded' }, 20000);
+      if (!r.ok) throw new Error(r.message || 'no answer');
+      const n = maxSlots(p), old = getLoaded(p) || [];
+      const list = Array.from({ length: n }, (_, i) => {
+        const x = r.slots[i]; if (!x || !x.colour) return old[i] || { colour: '#FFFFFF' };
+        return { colour: x.colour.toUpperCase(), preset: FF.matchFilament(PROFILES, p, { type: (x.material || 'PLA').toUpperCase(), name: x.material || 'basic', colour: x.colour }) };
+      });
+      setLoaded(p, list); S.slotEdits = {}; S.manual = {}; autoSlots(true); refresh();
+      setStatus(`Read ${r.slots.filter((x) => x && x.colour).length} loaded filaments from ${r.printer || 'the printer'}.`, 'ok');
+    } catch (e) { setStatus('Couldn’t read the printer: ' + (e.message || e), 'err'); }
+  });
+  $('colours').onchange = (ev) => { const t = ev.target; if (t.dataset.row) { S.manual[t.dataset.row] = +t.value; autoSlots(false); refresh(); } };
+  $('slots').onchange = (ev) => {
+    const t = ev.target; const p = printer();
+    if (t.id === 'useLoaded') {
+      if (t.checked && !getLoaded(p)) setLoaded(p, S.slots.slice(0, maxSlots(p)).map((s) => ({ colour: s.colour, preset: s.preset })));
+      store.set('ff.useLoaded.' + p.model, t.checked ? '1' : '0'); S.manual = {}; autoSlots(true); refresh(); return;
+    }
+    if (t.dataset.preset) { const k = +t.dataset.preset; S.slotEdits[k] = Object.assign({}, S.slotEdits[k], { preset: t.value }); S.slots[k - 1].preset = t.value; }
+    if (t.dataset.col) { const k = +t.dataset.col; S.slotEdits[k] = Object.assign({}, S.slotEdits[k], { colour: t.value.toUpperCase() }); S.slots[k - 1].colour = t.value.toUpperCase(); }
+    if (useLoaded(p)) { setLoaded(p, S.slots.map((s) => ({ colour: s.colour, preset: s.preset }))); if (t.dataset.col) { autoSlots(false); refresh(); return; } }
+    refresh(true);
+  };
+
+  // ---------- layout ----------
+  function compactSlots() {
+    if (useLoaded(printer())) { const renum = {}; S.slots.forEach((_, i) => { renum[i + 1] = i + 1; }); return { slots: S.slots, renum }; }
+    const used = [...new Set(Object.values(S.assign))].sort((a, b) => a - b);
+    const renum = {}; used.forEach((s, i) => { renum[s] = i + 1; });
+    return { slots: used.map((s) => S.slots[s - 1]), renum };
+  }
+  function computeLayout() {
+    const p = printer(), b = bedOf(p);
+    if (!S.entries.length) { S.layout = null; return; }
+    const { slots } = compactSlots();
+    const proc = p.keep ? (p.base ? p.base.src.project : {}) : FF.preset(PROFILES, 'process', $('process').value) || {};
+    let tower = null;
+    if (new Set(Object.values(S.assign || {})).size > 1 && proc.enable_prime_tower === '1') {
+      const w = Math.max(20, +proc.prime_tower_width || 35) + 6;
+      tower = { w, h: Math.max(35, Math.min(70, 18 + 10 * slots.length)) };
+    }
+    const exclude = [];
+    if ((p.exclude || []).length > 2) {
+      const ex = p.exclude.map((s) => s.split('x').map(Number));
+      const ex0 = Math.min(...ex.map((q) => q[0])), ey0 = Math.min(...ex.map((q) => q[1])), ex1 = Math.max(...ex.map((q) => q[0])), ey1 = Math.max(...ex.map((q) => q[1]));
+      if (ex1 > ex0 && ey1 > ey0) exclude.push({ x: ex0, y: ey0, w: ex1 - ex0, h: ey1 - ey0 });
+    }
+    S.exclude = exclude;
+    S.layout = FF.layout(S.entries, Object.assign({}, b, { exclude, tower }), { spacing: Math.max(1, +$('spacing').value || 5), margin: 5, rotate: $('rotate').checked, overrides: S.ov });
+    if (S.plateView >= S.layout.plateCount) S.plateView = 0;
+  }
+  $('spacing').onchange = () => refresh();
+  $('keepTemps').checked = store.get('ff.keepTemps') !== '0';
+  $('keepTemps').onchange = () => store.set('ff.keepTemps', $('keepTemps').checked ? '1' : '0');
+  $('rotate').onchange = () => refresh();
+
+  // Textured PEI sheet, drawn once per size and reused.
+  let peiCache = null;
+  function peiTexture(w, h, dpr) {
+    const key = w + 'x' + h + '@' + dpr;
+    if (peiCache && peiCache.key === key) return peiCache.c;
+    const c = document.createElement('canvas'); c.width = w * dpr; c.height = h * dpr;
+    const x = c.getContext('2d'); x.scale(dpr, dpr);
+    const css = getComputedStyle(document.documentElement);
+    const g = x.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, css.getPropertyValue('--pei-hi').trim()); g.addColorStop(0.55, css.getPropertyValue('--pei').trim()); g.addColorStop(1, css.getPropertyValue('--pei-lo').trim());
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const dots = Math.round(w * h / 9);
+    for (let i = 0; i < dots; i++) {
+      const v = rnd(); x.fillStyle = v < 0.5 ? `rgba(255,236,190,${0.08 + rnd() * 0.18})` : `rgba(60,38,8,${0.06 + rnd() * 0.16})`;
+      x.fillRect(rnd() * w, rnd() * h, 0.6 + rnd() * 1.1, 0.6 + rnd() * 1.1);
+    }
+    peiCache = { key, c }; return c;
+  }
+  function roundRect(ctx, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function hatch(ctx, x, y, w, h, colour) {
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.strokeStyle = colour; ctx.lineWidth = 1;
+    for (let d = -h; d < w; d += 6) { ctx.beginPath(); ctx.moveTo(x + d, y + h); ctx.lineTo(x + d + h, y); ctx.stroke(); }
+    ctx.restore(); ctx.strokeStyle = colour; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  }
+  // Top-down picture of a part, in its filament colours, lit from above. Cached per shape and colours.
+  const imgCache = new Map(), shadeCache = new Map();
+  function shade(hex, f) {
+    const k = hex + f; let v = shadeCache.get(k); if (v) return v;
+    // darken for shadow, and lift towards white on bright faces so dark filaments still show their shape
+    const lift = 42 * Math.max(0, f - 0.72) / 0.36, n = parseInt(hex.slice(1), 16), m = (c) => Math.max(0, Math.min(255, Math.round(c * Math.min(f, 1) + lift + 18 * (f - 0.5))));
+    v = `rgb(${m((n >> 16) & 255)},${m((n >> 8) & 255)},${m(n & 255)})`; shadeCache.set(k, v); return v;
+  }
+  function partImage(pl, sc, dpr, colourOf, sig) {
+    const e = S.entries[pl.ei], src = e.src, oid = pl.it.oid, T = pl.T, r = pl.rect;
+    const key = [e.id, oid, T.slice(0, 9).map((v) => v.toFixed(4)).join(','), sc.toFixed(4), dpr, sig].join('|');
+    if (imgCache.has(key)) return imgCache.get(key);
+    if (imgCache.size > 300) imgCache.clear();
+    const k = sc * dpr, w = Math.ceil(r.w * k) + 2, h = Math.ceil(r.h * k) + 2;
+    if (w * h > 6e6 || w < 2 || h < 2) { imgCache.set(key, null); return null; }
+    const block = src.msObjects.get(oid);
+    const objF = block ? +((/key="extruder"\s+value="(\d+)"/.exec(block.split('<part')[0]) || [])[1] || 1) : 1;
+    const info = FF.partInfo(src, oid);
+    const zs = [], cols = [], nzs = [], pts = [];
+    let zmin = Infinity, zmax = -Infinity;
+    for (const l of FF.solidLeaves(src, oid)) {
+      const W = FF.mul(l.M, T), v = FF.vertsOf(src, l), { idx, paint } = FF.trisOf(src, l);
+      const n = v.length / 3, P = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const x = v[i * 3], y = v[i * 3 + 1], z = v[i * 3 + 2];
+        P[i * 3] = x * W[0] + y * W[3] + z * W[6] + W[9]; P[i * 3 + 1] = x * W[1] + y * W[4] + z * W[7] + W[10]; P[i * 3 + 2] = x * W[2] + y * W[5] + z * W[8] + W[11];
+      }
+      const p = info.get(l.id), baseF = (p && p.extruder) || objF;
+      for (let t = 0; t < idx.length / 3; t++) {
+        const ia = idx[t * 3] * 3, ib = idx[t * 3 + 1] * 3, ic = idx[t * 3 + 2] * 3;
+        const ux = P[ib] - P[ia], uy = P[ib + 1] - P[ia + 1], uz = P[ib + 2] - P[ia + 2], vx = P[ic] - P[ia], vy = P[ic + 1] - P[ia + 1], vz = P[ic + 2] - P[ia + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, len = Math.hypot(nx, ny, nz);
+        if (Math.abs(nz) * k * k < 0.04 || !len) continue; // walls seen edge-on add nothing from above
+        const zc = (P[ia + 2] + P[ib + 2] + P[ic + 2]) / 3;
+        zs.push(zc); nzs.push(Math.abs(nz) / len); cols.push(colourOf(paint[t] || baseF));
+        pts.push(P[ia], P[ia + 1], P[ib], P[ib + 1], P[ic], P[ic + 1]);
+        if (zc < zmin) zmin = zc; if (zc > zmax) zmax = zc;
+      }
+    }
+    if (!zs.length) { imgCache.set(key, null); return null; }
+    const order = Array.from(zs.keys()).sort((p, q) => zs[p] - zs[q]);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'); x.lineJoin = 'round'; x.lineWidth = 0.5;
+    const px = (X) => (X - r.x) * k + 1, py = (Y) => (r.y + r.h - Y) * k + 1, span = zmax - zmin || 1;
+    // draw in small batches: one giant path is very slow to fill
+    let style = null, count = 0;
+    const flush = () => { if (count) { x.fillStyle = style; x.strokeStyle = style; x.fill(); if (thin) x.stroke(); count = 0; } };
+    const thin = order.length < 60000; // a hairline stroke hides seams; skip it on very dense meshes
+    for (const i of order) {
+      const lit = 0.5 + 0.42 * nzs[i] + 0.16 * (zs[i] - zmin) / span; // flatter and higher = brighter
+      const st = shade(cols[i], Math.round(lit * 20) / 20);
+      if (st !== style || count >= 200) { flush(); style = st; x.beginPath(); }
+      const o = i * 6;
+      x.moveTo(px(pts[o]), py(pts[o + 1])); x.lineTo(px(pts[o + 2]), py(pts[o + 3])); x.lineTo(px(pts[o + 4]), py(pts[o + 5]));
+      count++;
+    }
+    flush();
+    imgCache.set(key, c); return c;
+  }
+  function drawBed() {
+    const cv = $('bed'), ctx = cv.getContext('2d'), p = printer(), b = bedOf(p);
+    const W = b.x1 - b.x0, H = b.y1 - b.y0, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cssW = cv.clientWidth || 600, cssH = cssW * H / W;
+    cv.width = cssW * dpr; cv.height = cssH * dpr; cv.style.height = cssH + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const sc = cssW / W, X = (x) => (x - b.x0) * sc, Y = (y) => cssH - (y - b.y0) * sc;
+    ctx.drawImage(peiTexture(cssW, cssH, dpr), 0, 0, cssW, cssH);
+    // 50 mm marks along the edges, like a bed's scale
+    ctx.strokeStyle = 'rgba(40,24,4,.28)'; ctx.lineWidth = 1;
+    for (let g = Math.ceil(b.x0 / 50) * 50; g <= b.x1; g += 50) { ctx.beginPath(); ctx.moveTo(X(g), cssH); ctx.lineTo(X(g), cssH - 7); ctx.stroke(); }
+    for (let g = Math.ceil(b.y0 / 50) * 50; g <= b.y1; g += 50) { ctx.beginPath(); ctx.moveTo(0, Y(g)); ctx.lineTo(7, Y(g)); ctx.stroke(); }
+    S.hit = [];
+    const L = S.layout;
+    if (!L || !L.placements.length) {
+      ctx.fillStyle = 'rgba(255,248,232,.92)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '700 19px Archivo, system-ui, sans-serif'; ctx.fillText(S.entries.length ? 'Nothing fits this bed' : 'Tap to add 3MF or STL files', cssW / 2, cssH / 2 - 10);
+      ctx.font = '400 14px Archivo, system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,248,232,.75)';
+      ctx.fillText(`${Math.round(W)} × ${Math.round(H)} mm`, cssW / 2, cssH / 2 + 16);
+      ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic'; return;
+    }
+    const { renum, slots } = compactSlots();
+    const sig = JSON.stringify([slots.map((s) => s && s.colour), S.assign, renum]);
+    for (const ex of S.exclude || []) hatch(ctx, X(ex.x), Y(ex.y + ex.h), ex.w * sc, ex.h * sc, 'rgba(120,20,10,.55)');
+    if (L.tower) {
+      hatch(ctx, X(L.tower.x), Y(L.tower.y + L.tower.h), L.tower.w * sc, L.tower.h * sc, 'rgba(255,248,232,.65)');
+      ctx.fillStyle = 'rgba(255,248,232,.9)'; ctx.font = '600 11px Archivo, system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('purge', X(L.tower.x + L.tower.w / 2), Y(L.tower.y + L.tower.h / 2) + 4); ctx.textAlign = 'start';
+    }
+    for (const pl of L.placements) {
+      if (pl.plate !== S.plateView) continue;
+      const e = S.entries[pl.ei];
+      const block = e.src.msObjects.get(pl.it.oid);
+      const ext = block ? +((/key="extruder"\s+value="(\d+)"/.exec(block.split('<part')[0]) || [])[1] || 1) : 1;
+      const slot = renum[S.assign[e.id + '|' + ext]] || 1;
+      const col = (slots[slot - 1] || {}).colour || '#cccccc';
+      const r = pl.rect, x = X(r.x), y = Y(r.y + r.h), w = Math.max(2, r.w * sc), h = Math.max(2, r.h * sc);
+      S.hit.push({ pl, x, y, w, h });
+      const colourOf = (f) => { const s = renum[S.assign[e.id + '|' + f]] || slot; return (slots[s - 1] || {}).colour || col; };
+      let img = null;
+      try { img = partImage(pl, sc, dpr, colourOf, sig); } catch (err) { img = null; }
+      if (img) {
+        ctx.save(); ctx.shadowColor = 'rgba(30,18,2,.5)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 2;
+        ctx.drawImage(img, x - 1 / dpr, y - 1 / dpr, img.width / dpr, img.height / dpr); ctx.restore();
+      } else {
+        ctx.save(); ctx.shadowColor = 'rgba(30,18,2,.45)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+        roundRect(ctx, x, y, w, h, Math.min(6, w / 4)); ctx.fillStyle = col; ctx.fill(); ctx.restore();
+      }
+      // which model it's from: a small badge in the corner, so it doesn't hide the shape
+      if (w > 14 && h > 14) {
+        const rr = 8, cx = x + Math.min(rr + 1, w / 2), cy = y + Math.min(rr + 1, h / 2);
+        ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.fillStyle = 'rgba(34,38,43,.88)'; ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = '700 10px Archivo, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(pl.ei + 1), cx, cy + 0.5); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+      }
+    }
+  }
+  function renderLayoutInfo() {
+    const L = S.layout, tabs = $('tabs');
+    if (!L) { tabs.hidden = true; $('layoutMsg').innerHTML = ''; return; }
+    tabs.hidden = L.plateCount < 2;
+    tabs.innerHTML = Array.from({ length: L.plateCount }, (_, i) => `<button class="${i === S.plateView ? 'on' : ''}" data-pv="${i}">Plate ${i + 1}</button>`).join('');
+    const msgs = [];
+    const count = L.placements.length;
+    msgs.push(`<p class="note">${count} part${count === 1 ? '' : 's'}${L.plateCount > 1 ? ` across ${L.plateCount} plates` : ' on one plate'}. Tap a part to turn it, move it or remove it.</p>`);
+    const removed = Object.values(S.ov).filter((o) => o.removed).length;
+    if (removed) msgs.push(`<p class="note">${removed} part${removed === 1 ? '' : 's'} removed · <a href="#" id="restore">put back</a></p>`);
+    if (L.plateCount > 1) msgs.push(`<p class="warn">Everything doesn't fit on one plate, so the rest goes on extra plates. Try fewer copies or a smaller gap.</p>`);
+    if (L.tooBig.length) msgs.push(`<p class="warn">${L.tooBig.length} part${L.tooBig.length === 1 ? ' is' : 's are'} bigger than this bed and ${L.tooBig.length === 1 ? 'was' : 'were'} left out.</p>`);
+    const bases = S.entries.filter((e) => e.src.project);
+    if (S.entries.length > 1 && bases.length) msgs.push(`<p class="note">Walls, infill and supports come from “${esc(bases[0].src.title)}”.</p>`);
+    $('layoutMsg').innerHTML = msgs.join('');
+    const r = $('restore'); if (r) r.onclick = (ev) => { ev.preventDefault(); for (const k of Object.keys(S.ov)) if (S.ov[k].removed) delete S.ov[k]; refresh(); };
+    renderEstimate();
+  }
+  // Rough filament use and cost for the whole build.
+  function renderEstimate() {
+    const L = S.layout, box = $('est');
+    if (!L || !L.placements.length) { box.hidden = true; return; }
+    const p = printer(); const base = S.entries.find((e) => e.src.project);
+    const proc = p.keep ? (p.base ? p.base.src.project : {}) : FF.preset(PROFILES, 'process', $('process').value) || {};
+    const pick = (k) => (base && base.src.project[k] !== undefined ? base.src.project[k] : proc[k]);
+    const { slots } = compactSlots();
+    const used = slots.filter(Boolean).map((s) => (p.keep ? null : FF.preset(PROFILES, 'filament', s.preset))).filter(Boolean);
+    const density = used.length ? used.reduce((t, f) => t + (+(f.filament_density || [1.24])[0] || 1.24), 0) / used.length : 1.24;
+    let grams = 0;
+    try { grams = FF.estimate(S.entries, L.placements, { wall_loops: pick('wall_loops'), sparse_infill_density: pick('sparse_infill_density'), density }).grams; } catch (e) { box.hidden = true; return; }
+    const price = +(store.get('ff.price') || 20);
+    box.hidden = false;
+    box.innerHTML = `<span title="Rough estimate, not counting colour-change waste"><b>~${Math.round(grams)} g</b></span><span><b>£${(grams / 1000 * price).toFixed(2)}</b></span>
+      <label>at £<input id="price" type="number" min="1" step="1" inputmode="decimal" value="${price}" aria-label="Filament price per kg">/kg</label>`;
+    $('price').onchange = (ev) => { store.set('ff.price', String(Math.max(1, +ev.target.value || 20))); renderEstimate(); };
+  }
+  // ---------- tap a part to adjust it ----------
+  $('bed').addEventListener('click', (ev) => {
+    const rc = $('bed').getBoundingClientRect(), x = ev.clientX - rc.left, y = ev.clientY - rc.top;
+    const h = S.hit.slice().reverse().find((q) => x >= q.x - 4 && x <= q.x + q.w + 4 && y >= q.y - 4 && y <= q.y + q.h + 4);
+    if (h) openSheet(h.pl); else if (!S.entries.length) $('pick').click();
+  });
+  function openSheet(pl) {
+    const e = S.entries[pl.ei], o = S.ov[pl.key] || {}, n = S.layout.plateCount;
+    const plates = Array.from({ length: Math.min(n + 1, 36) }, (_, i) => i).filter((i) => i !== pl.plate);
+    $('sheet').innerHTML = `<h3>${esc(e.src.title)}</h3><p class="note" style="margin:0 0 6px">Part from model ${pl.ei + 1}, on plate ${pl.plate + 1}</p>
+      <button class="btn" data-act="rot">↻ Turn 90°</button>
+      <div class="row3">${plates.map((i) => `<button class="btn" data-act="plate" data-p="${i}">${i >= n ? 'New plate' : 'Move to plate ' + (i + 1)}</button>`).join('')}</div>
+      <button class="btn danger" data-act="remove">Remove this one</button>
+      ${o.rot || o.plate !== undefined ? '<button class="btn" data-act="reset">Back to automatic</button>' : ''}
+      <button class="btn" data-act="close">Cancel</button>`;
+    $('sheet').onclick = (ev) => {
+      const t = ev.target.closest('button'); if (!t) return;
+      const cur = S.ov[pl.key] = Object.assign({}, S.ov[pl.key]);
+      if (t.dataset.act === 'rot') cur.rot = ((cur.rot || 0) + 1) % 4;
+      if (t.dataset.act === 'plate') { cur.plate = +t.dataset.p; S.plateView = +t.dataset.p; }
+      if (t.dataset.act === 'remove') cur.removed = true;
+      if (t.dataset.act === 'reset') delete S.ov[pl.key];
+      $('sheetBg').hidden = true;
+      if (t.dataset.act !== 'close') refresh();
+    };
+    $('sheetBg').hidden = false;
+  }
+  $('sheetBg').addEventListener('click', (ev) => { if (ev.target === $('sheetBg')) $('sheetBg').hidden = true; });
+
+  $('tabs').onclick = (ev) => { const t = ev.target.closest('button'); if (t) { S.plateView = +t.dataset.pv; renderLayoutInfo(); drawBed(); } };
+
+  function refresh(keepLayout) {
+    renderFiles();
+    if (!S.rows) autoSlots(true);
+    renderColours();
+    if (!keepLayout || !S.layout) computeLayout();
+    renderLayoutInfo(); drawBed();
+    $('go').disabled = !S.entries.length || !(S.layout && S.layout.placements.length);
+    $('slice').disabled = $('go').disabled || printer().keep;
+    // the slicing engine ships as extra files beside this page, which the claude.ai preview doesn't carry
+    const noSlicer = !!window.claude; $('slice').hidden = noSlicer; $('go').parentNode.style.gridTemplateColumns = noSlicer ? '1fr' : '';
+    if (sliced && !sliced.running && !keepLayout) { sliced = null; $('sliced').hidden = true; }
+    $('fname').placeholder = S.entries.length ? defaultName() : 'File name';
+  }
+  window.addEventListener('resize', () => { drawBed(); drawLayer(); });
+
+  // ---------- build ----------
+  // Everything a build or a slice needs: printer, the filament slots in use, and which slot each model filament prints with.
+  function buildArgs() {
+    const p = printer(); const { slots, renum } = compactSlots();
+    if (p.keep && !p.base) throw new Error('add at least one MakerWorld (Bambu) 3MF to take the settings from');
+    let useSlots = slots.length ? slots : [{ colour: '#FFFFFF', preset: p.keep ? '1' : FF.matchFilament(PROFILES, p, { type: 'PLA' }) }];
+    if (p.keep) useSlots = useSlots.map((s) => ({ colour: s.colour, baseIdx: +s.preset || 1 }));
+    const slotOf = (ei, f) => Math.min(renum[S.assign[S.entries[ei].id + '|' + f]] || 1, useSlots.length);
+    // which model filament each slot came from (for its temperatures and the report)
+    const orig = {}; Object.entries(renum).forEach(([o, nw]) => { orig[nw] = +o; });
+    useSlots = useSlots.map((s, i) => {
+      const r = (S.rows || []).find((x) => S.assign[x.key] === (orig[i + 1] || i + 1));
+      return Object.assign({}, s, { from: r ? { project: r.entry.src.project, f: r.f, name: r.name, type: r.type, colour: r.colour } : null });
+    });
+    const usedCount = new Set(Object.values(S.assign || {})).size;
+    return { p, useSlots, slotOf, usedCount, processName: $('process').value, keepTemps: $('keepTemps').checked };
+  }
+  // Hand a finished file to the person: the share sheet where there is one, a download otherwise.
+  async function deliver(data, filename, mime, label) {
+    const dl = window.claude ? await window.claude.use('downloads').catch(() => null) : null;
+    const file = typeof File === 'function' ? new File([data], filename, { type: mime }) : null;
+    if (!dl && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: filename }); setStatus('Shared ' + filename, 'ok'); return; }
+      catch (e) { if (e && e.name === 'AbortError') { setStatus('Share cancelled.'); return; } }
+    }
+    if (!dl) {
+      const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: mime })); const el = document.createElement('a');
+      el.href = url; el.download = filename; document.body.appendChild(el); el.click(); el.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setStatus(`Saved ${filename}`, 'ok'); return;
+    }
+    // inside claude.ai only some file types can be saved, so the real extension rides in front of an allowed one
+    await dl.save({ filename: filename + (label === '3mf' ? '.zip' : '.txt'), data });
+    setStatus(`Saved. Rename it to end in .${label} (delete the “${label === '3mf' ? '.zip' : '.txt'}”).`, 'ok');
+  }
+  $('go').onclick = async () => {
+    const btn = $('go'); btn.disabled = true; setStatus('Building…');
+    try {
+      const A = buildArgs();
+      const { blob, report } = await FF.build({ entries: S.entries, profiles: PROFILES, printer: A.p, processName: A.processName, slots: A.useSlots, slotOf: A.slotOf, layoutRes: S.layout, keepTemps: A.keepTemps, usedCount: A.usedCount });
+      renderReport(report, A.p, A.useSlots);
+      await deliver(blob, outName() + '.3mf', 'model/3mf', '3mf');
+    } catch (e) {
+      if (e && e.code === 'declined') setStatus('Save cancelled.');
+      else { console.error(e); setStatus('Could not build: ' + (e && e.message || e), 'err'); }
+    } finally { btn.disabled = false; }
+  };
+
+  // ---------- slice on the phone (beta) ----------
+  let worker = null, sliced = null;
+  function getWorker() {
+    if (!worker) worker = new Worker(new URL('slice-worker.js', location.href), { type: 'module' });
+    return worker;
+  }
+  // The plate as one binary STL in plate-centre coordinates, plus which triangles print with which tool and the paint.
+  function sliceInput(A) {
+    const b = bedOf(A.p), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+    const parts = [], splits = [], tools = [], facets = [], hex = [];
+    let total = 0;
+    for (const pl of S.layout.placements) {
+      const e = S.entries[pl.ei], src = e.src, block = src.msObjects.get(pl.it.oid);
+      const objF = block ? +((/key="extruder"\s+value="(\d+)"/.exec(block.split('<part')[0]) || [])[1] || 1) : 1;
+      const info = FF.partInfo(src, pl.it.oid);
+      for (const l of FF.solidLeaves(src, pl.it.oid)) {
+        const W = FF.mul(l.M, pl.T), v = FF.vertsOf(src, l), t = FF.trisOf(src, l);
+        const pi = info.get(l.id), f = (pi && pi.extruder) || objF;
+        if (total) splits.push(total);
+        tools.push(A.slotOf(pl.ei, f) - 1);
+        for (const [ti, h] of t.hex) { facets.push(total + ti); hex.push(FF.walkPaint(h, (st) => (st > 0 ? A.slotOf(pl.ei, st) : 0))); }
+        parts.push({ W, v, idx: t.idx }); total += t.idx.length / 3;
+      }
+    }
+    const buf = new ArrayBuffer(84 + total * 50), dv = new DataView(buf); dv.setUint32(80, total, true);
+    let o = 84;
+    for (const { W, v, idx } of parts) for (let t = 0; t < idx.length; t += 3) {
+      o += 12;
+      for (let k = 0; k < 3; k++) {
+        const i = idx[t + k] * 3, x = v[i], y = v[i + 1], z = v[i + 2];
+        dv.setFloat32(o, x * W[0] + y * W[3] + z * W[6] + W[9] - cx, true);
+        dv.setFloat32(o + 4, x * W[1] + y * W[4] + z * W[7] + W[10] - cy, true);
+        dv.setFloat32(o + 8, x * W[2] + y * W[5] + z * W[8] + W[11], true); o += 12;
+      }
+      o += 2;
+    }
+    return { stl: buf, splits, tools, paint: { facets, hex: hex.join('\n') }, centre: [cx, cy] };
+  }
+  // Orca-style settings map for the kernel: numbers as numbers, bed outlines as [x, y] points.
+  function kernelSettings(cfg) {
+    const out = {};
+    for (const [k, v] of Object.entries(cfg)) {
+      const num = (x) => (typeof x === 'string' && x.trim() !== '' && !isNaN(+x) ? +x : x);
+      out[k] = Array.isArray(v) ? v.map(num) : num(v);
+    }
+    for (const k of ['printable_area', 'bed_exclude_area']) if (Array.isArray(cfg[k])) out[k] = cfg[k].map((p) => String(p).split('x').map(Number));
+    out.file_start_gcode = ''; // only holds a print-time line, which Plate Builder writes itself
+    return out;
+  }
+  // A small picture of the plate for the printer's screen, in the slicer's own thumbnail format.
+  function thumbnailBlock(w, h) {
+    try {
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
+      const L = S.layout, pls = L.placements.filter((q) => q.plate === S.plateView);
+      const x0 = Math.min(...pls.map((q) => q.rect.x)), y0 = Math.min(...pls.map((q) => q.rect.y));
+      const x1 = Math.max(...pls.map((q) => q.rect.x + q.rect.w)), y1 = Math.max(...pls.map((q) => q.rect.y + q.rect.h));
+      const sc = Math.min((w - 8) / (x1 - x0), (h - 8) / (y1 - y0)), ox = (w - (x1 - x0) * sc) / 2, oy = (h - (y1 - y0) * sc) / 2;
+      const { renum, slots } = compactSlots();
+      for (const pl of pls) {
+        const e = S.entries[pl.ei];
+        const colourOf = (f) => { const s = renum[S.assign[e.id + '|' + f]] || 1; return (slots[s - 1] || {}).colour || '#cccccc'; };
+        const img = partImage(pl, sc, 1, colourOf, 'thumb' + JSON.stringify([slots.map((s) => s && s.colour), S.assign]));
+        const px = ox + (pl.rect.x - x0) * sc, py = oy + (y1 - pl.rect.y - pl.rect.h) * sc;
+        if (img) x.drawImage(img, px - 1, py - 1); else { x.fillStyle = colourOf(1); x.fillRect(px, py, pl.rect.w * sc, pl.rect.h * sc); }
+      }
+      const b64 = c.toDataURL('image/png').split(',')[1], lines = [];
+      for (let i = 0; i < b64.length; i += 78) lines.push('; ' + b64.slice(i, i + 78));
+      return `; THUMBNAIL_BLOCK_START\n;\n; thumbnail begin ${w}x${h} ${b64.length}\n${lines.join('\n')}\n; thumbnail end\n; THUMBNAIL_BLOCK_END\n`;
+    } catch (e) { return ''; }
+  }
+  const hms = (s) => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return (h ? h + 'h ' : '') + m + 'm ' + (s % 60) + 's'; };
+  // Rough print time of G-code from its moves (used when the engine gives no estimate).
+  function moveTime(lines) {
+    let x = 0, y = 0, z = 0, f = 3000; const t = new Float64Array(lines.length); let acc = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.charCodeAt(0) === 71 && (l[1] === '0' || l[1] === '1') && l[2] === ' ') {
+        let nx = x, ny = y, nz = z, e = 0;
+        for (const w of l.split(';')[0].split(' ')) { const v = +w.slice(1); switch (w[0]) { case 'X': nx = v; break; case 'Y': ny = v; break; case 'Z': nz = v; break; case 'F': f = v || f; break; case 'E': e = v; break; } }
+        const d = Math.hypot(nx - x, ny - y, nz - z) || Math.abs(e);
+        if (d) acc += d / Math.max(1, f / 60) * 1.15;
+        x = nx; y = ny; z = nz;
+      }
+      t[i] = acc;
+    }
+    return t;
+  }
+  function finishGcode(gcode, stats, cfg) {
+    const [tw, th] = String(cfg.thumbnails || '140x110').split('/')[0].split(',')[0].split('x').map(Number);
+    let g = gcode.replace(';_GP_THUMBNAILS_PLACEHOLDER', thumbnailBlock(tw || 140, th || 110)).replace(/^;_GP_(FIRST|LAST)_LINE_M73_PLACEHOLDER\n?/gm, '');
+    const n = (cfg.filament_colour || []).length, semm = String(cfg.single_extruder_multi_material) === '1';
+    if (!semm && n > 1) g = toolheadGcode(g, cfg, stats);
+    const time = stats.time_estimate || stats.time_rough;
+    const head = `; HEADER_BLOCK_START\n; generated by Plate Builder with three-slicer (OrcaSlicer-derived) on ${new Date().toISOString().slice(0, 10)}\n; total layer number: ${stats.layers}\n` +
+      (time ? `; estimated printing time (normal mode) = ${hms(time)}\n` : '') + `; HEADER_BLOCK_END\n\n`;
+    return head + g;
+  }
+  // Printers with a toolhead per colour (Creator 5), done the way Flash Studio's profile asks:
+  //  - ooze prevention: a toolhead that isn't printing waits at its standby temperature (80 °C cooler), so it doesn't
+  //    drip while parked, and heats back up shortly before it's needed;
+  //  - the prime tower prints at a sensible speed (this engine prints it at about 20 mm/s).
+  function toolheadGcode(g, cfg, stats) {
+    const full = (i) => +(cfg.nozzle_temperature || [])[i] || +(cfg.nozzle_temperature || [210])[0] || 210;
+    const delta = Math.abs(+cfg.standby_temperature_delta || 80);
+    const standby = (i) => Math.max(120, full(i) - delta);
+    const HEAT_AHEAD = 45; // seconds before a toolhead is needed to start heating it (from standby to print temperature)
+    const TOWER_F = 4800;  // 80 mm/s on the prime tower
+    let lines = g.split('\n');
+    // 1. prime tower speed
+    let inTower = false;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (/^; ?(WIPE_TOWER_START|CP TOOLCHANGE START)|^;TYPE:Prime tower|^; FEATURE: Prime tower/.test(l)) { inTower = true; continue; }
+      if (/^; ?(WIPE_TOWER_END|CP TOOLCHANGE END)|^;TYPE:(?!Prime)|^; FEATURE: (?!Prime)/.test(l)) { inTower = false; continue; }
+      if (inTower && /^G1 /.test(l)) lines[i] = l.replace(/F(\d+(?:\.\d+)?)/, (m, f) => (+f < TOWER_F ? 'F' + TOWER_F : m));
+    }
+    // 2. ooze prevention
+    const changes = []; // { i, tool }
+    for (let i = 0; i < lines.length; i++) { const m = /^T(\d+)\s*$/.exec(lines[i]); if (m) changes.push({ i, tool: +m[1] }); }
+    if (!changes.length) return lines.join('\n');
+    const t = moveTime(lines);
+    const ins = new Map(); // line index -> lines to insert before it
+    const add = (i, txt) => { if (!ins.has(i)) ins.set(i, []); ins.get(i).push(txt); };
+    const used = [...new Set(changes.map((c) => c.tool))];
+    // at the start, every other toolhead goes to standby (the start G-code heats the first one)
+    const startAt = Math.max(0, lines.findIndex((l) => /^; (LAYER|layer) 0\b|^;LAYER_CHANGE/.test(l)));
+    for (const k of used) if (k !== changes[0].tool) add(startAt, `M104 S${standby(k)} T${k} ; standby toolhead ${k + 1}`);
+    const lastOff = {}; // tool -> line index where it went to standby
+    for (const k of used) lastOff[k] = startAt;
+    let cur = changes[0].tool;
+    for (let c = 1; c < changes.length; c++) {
+      const { i, tool } = changes[c];
+      if (tool === cur) continue;
+      // heat the next toolhead about HEAT_AHEAD seconds earlier, but not before it was put on standby
+      let j = i; while (j > lastOff[tool] + 1 && t[i] - t[j] < HEAT_AHEAD) j--;
+      add(j, `M104 S${full(tool)} T${tool} ; heat toolhead ${tool + 1} for the next colour`);
+      add(i, `M109 S${full(tool)} T${tool}`);
+      // the toolhead just finished with cools to standby once the new one has taken over
+      add(i + 1, `M104 S${standby(cur)} T${cur} ; standby toolhead ${cur + 1}`);
+      lastOff[cur] = i + 1; cur = tool;
+    }
+    const out = [];
+    for (let i = 0; i < lines.length; i++) { if (ins.has(i)) out.push(...ins.get(i)); out.push(lines[i]); }
+    // time: moves, plus a little for each change (most of the heating happens while printing)
+    if (!stats.time_estimate) { const tt = moveTime(out); stats.time_rough = tt[tt.length - 1] + (changes.length - 1) * 12; }
+    return out.join('\n');
+  }
+
+  $('slice').onclick = async () => {
+    if (sliced && sliced.running) { worker.terminate(); worker = null; sliced = null; setStatus('Slicing stopped.'); $('slice').textContent = 'Slice'; return; }
+    try {
+      const A = buildArgs();
+      if (A.p.keep) throw new Error('slicing works with the Flashforge printers');
+      if (S.layout.plateCount > 1) throw new Error('everything needs to fit on one plate first');
+      const proj = FF.buildProject(PROFILES, A.p, A.processName, A.useSlots, (S.entries.find((e) => e.src.project) || { src: {} }).src.project, S.layout, { keepTemps: A.keepTemps, usedCount: A.usedCount });
+      const input = sliceInput(A);
+      const extra = { extruder_count: A.useSlots.length, mm_group_splits: input.splits, mm_group_tools: input.tools, gcode_role_tags: true, gcode_stats_block: true, wipe_tower_real: true };
+      // Printers with a nozzle per colour (Creator 5) don't purge when switching: each toolhead keeps its own filament
+      // (Flash Studio's profile has purge_in_prime_tower = 0). The tower just primes and wipes; see toolheadGcode.
+      const n = A.useSlots.length;
+      if (!A.p.semm && n > 1) extra.flush_volumes_matrix = Array(n * n).fill(0);
+      sliced = { running: true, started: Date.now() };
+      $('slice').textContent = 'Stop'; $('go').disabled = true;
+      setStatus('Loading the slicer (about 7 MB the first time)…');
+      const w = getWorker();
+      const result = await new Promise((resolve, reject) => {
+        w.onmessage = (ev) => {
+          const d = ev.data;
+          if (d.type === 'progress') setStatus(`Slicing… ${Math.round(d.done / Math.max(1, d.total) * 100)}%`);
+          if (d.type === 'done') resolve(d);
+          if (d.type === 'error') reject(new Error(d.error));
+        };
+        w.onerror = (e) => reject(new Error(e.message || 'the slicer could not start. It needs the files from the Netlify zip next to this page'));
+        w.postMessage({ cmd: 'slice', stl: input.stl, settings: kernelSettings(proj.cfg), extra, paint: input.paint, changeSeconds: A.p.semm ? 55 : 12 }, [input.stl]);
+      });
+      sliced = { running: false, gcode: finishGcode(result.gcode, result.stats, proj.cfg), stats: result.stats, layers: result.layers, centre: input.centre, slots: A.useSlots, secs: (Date.now() - sliced.started) / 1000 };
+      showSliced();
+      setStatus(`Sliced in ${Math.round(sliced.secs)} s.`, 'ok');
+    } catch (e) {
+      console.error(e); sliced = null; setStatus('Could not slice: ' + (e && e.message || e), 'err');
+    } finally { $('slice').textContent = 'Slice'; $('go').disabled = !S.entries.length; }
+  };
+  function showSliced() {
+    const box = $('sliced'); box.hidden = false;
+    const st = sliced.stats, n = sliced.layers.length;
+    const time = st.time_estimate || st.time_rough, rough = !st.time_estimate;
+    const byTool = st.filament_mm_by_tool || [st.filament_mm];
+    const grams = byTool.map((mm, i) => {
+      const f = FF.preset(PROFILES, 'filament', sliced.slots[i] && sliced.slots[i].preset) || {};
+      const d = +(f.filament_diameter || [1.75])[0] || 1.75, rho = +(f.filament_density || [1.24])[0] || 1.24;
+      return mm * Math.PI * (d / 2) ** 2 * rho / 1000;
+    });
+    $('slicedStats').innerHTML = `<span><b>${time ? (rough ? 'about ' : '') + hms(time).replace(/ \d+s$/, '') : '—'}</b> print time</span><span><b>${Math.round(grams.reduce((t, g) => t + g, 0))} g</b> filament</span><span><b>${n}</b> layers</span>` +
+      (grams.length > 1 ? `<span class="pertool">${grams.map((g, i) => `<i class="sw" style="--c:${sliced.slots[i] ? sliced.slots[i].colour : '#ccc'}"></i>${Math.round(g)} g`).join(' ')}</span>` : '');
+    const r = $('layer'); r.max = n; r.value = n; drawLayer();
+  }
+  function drawLayer() {
+    if (!sliced || !sliced.layers) return;
+    const cv = $('layerView'), ctx = cv.getContext('2d'), p = printer(), b = bedOf(p);
+    const W = b.x1 - b.x0, H = b.y1 - b.y0, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cssW = cv.clientWidth || 600, cssH = cssW * H / W;
+    cv.width = cssW * dpr; cv.height = cssH * dpr; cv.style.height = cssH + 'px'; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.drawImage(peiTexture(cssW, cssH, dpr), 0, 0, cssW, cssH);
+    const sc = cssW / W, [cx, cy] = sliced.centre;
+    const X = (v) => (v / 10 + cx - b.x0) * sc, Y = (v) => cssH - (v / 10 + cy - b.y0) * sc;
+    const upto = +$('layer').value; // the chosen layer on top of the few dozen below it
+    ctx.lineCap = 'round';
+    for (let li = Math.max(0, upto - 40); li < upto; li++) {
+      const L = sliced.layers[li], top = li === upto - 1;
+      ctx.globalAlpha = top ? 1 : 0.18; ctx.lineWidth = top ? Math.max(1, 0.45 * sc) : Math.max(0.6, 0.4 * sc);
+      let cur = -1;
+      ctx.beginPath();
+      for (let k = 0; k < L.tool.length; k++) {
+        if (L.tool[k] !== cur) { ctx.stroke(); cur = L.tool[k]; ctx.strokeStyle = (sliced.slots[cur] || sliced.slots[0]).colour; ctx.beginPath(); }
+        ctx.moveTo(X(L.seg[k * 4]), Y(L.seg[k * 4 + 1])); ctx.lineTo(X(L.seg[k * 4 + 2]), Y(L.seg[k * 4 + 3]));
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    const L = sliced.layers[upto - 1];
+    $('layerLabel').textContent = upto ? `Layer ${upto} of ${sliced.layers.length}, ${L.z.toFixed(2)} mm` : '';
+  }
+  $('layer').addEventListener('input', () => requestAnimationFrame(drawLayer));
+  // ---------- send to the printer through an iPhone Shortcut ----------
+  // Web pages can't reach the printer, so the share sheet hands two files to the shortcut: the G-code, and a small
+  // JSON file with the upload settings the printer's network API asks for (its headers), worked out here.
+  const safeName = (s) => s.replace(/[^\w\- ]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'plate';
+  function printJob(gcodeBytes, name) {
+    const p = printer(), n = sliced.slots.length, multi = p.semm || p.extruders > 1;
+    // only the tools this G-code actually uses, so an empty or unused slot never holds up the print
+    const used = new Set(); for (const m of sliced.gcode.matchAll(/^T(\d+)\b/gm)) used.add(+m[1]);
+    if (!used.size) used.add(0);
+    const maps = multi ? sliced.slots.map((s, i) => {
+      const f = FF.preset(PROFILES, 'filament', s.preset) || {}; const c = String(s.colour || '#FFFFFF').toUpperCase();
+      return { toolId: i, slotId: i + 1, materialName: String((f.filament_type || ['PLA'])[0]).toUpperCase(), toolMaterialColor: c, slotMaterialColor: c };
+    }).filter((m) => used.has(m.toolId)) : [];
+    return {
+      printer: p.model, fileName: name, fileSize: String(gcodeBytes),
+      printNow: 'true', levelingBeforePrint: $('levelFirst').checked ? 'true' : 'false',
+      flowCalibration: 'false', firstLayerInspection: 'false', timeLapseVideo: 'false',
+      useMatlStation: multi ? 'true' : 'false', gcodeToolCnt: String(maps.length),
+      materialMappings: btoa(JSON.stringify(maps)),
+    };
+  }
+  $('sendPrinter').onclick = async () => {
+    if (!sliced || !sliced.gcode) return;
+    const name = safeName(outName()) + '.gcode';
+    if (!Bridge.here()) { $('sendHelp').hidden = true; $('howSend').click(); setStatus('Install the Plate Builder add-on first, see the steps below.', 'err'); return; }
+    const bytes = new TextEncoder().encode(sliced.gcode);
+    const job = printJob(bytes.length, name);
+    $('sendPrinter').disabled = true;
+    try {
+      setStatus('Sending to the printer…');
+      const r = await Bridge.ask({ type: 'pb-print', name, gcode: sliced.gcode, job, model: printer().model }, 300000);
+      setStatus(r.message || (r.ok ? 'Printing.' : 'The printer said no.'), r.ok ? 'ok' : 'err');
+    } catch (e) { setStatus('Couldn’t send: ' + (e.message || e), 'err'); }
+    finally { $('sendPrinter').disabled = false; }
+  };
+  $('levelFirst').checked = store.get('ff.level') !== '0';
+  $('levelFirst').onchange = () => store.set('ff.level', $('levelFirst').checked ? '1' : '0');
+  $('howSend').onclick = (ev) => {
+    ev.preventDefault(); const box = $('sendHelp'); box.hidden = !box.hidden;
+    box.innerHTML = `<ol class="steps">
+      <li>Install the add-on from <b>Add the Safari add-on</b> further down, if you haven’t already. The same add-on does both jobs.</li>
+      <li>On the printer’s screen, find its <b>IP address</b>, <b>serial number</b> and <b>check code</b> in its network settings. Give it a fixed IP in your router if you can.</li>
+      <li>Slice, then tap <b>Send to printer</b>. The first time, it asks for those three details and checks it can reach the printer.</li>
+    </ol>` + (Bridge.here() ? `<button class="btn small" type="button" id="printerSettings">Printer settings</button>` : '');
+  };
+  $('sendHelp').addEventListener('click', (ev) => { if (ev.target.closest('#printerSettings')) Bridge.ask({ type: 'pb-settings' }, 600000).then((r) => r && r.message && setStatus(r.message, r.ok ? 'ok' : 'err')).catch(() => {}); });
+  $('saveGcode').onclick = async () => {
+    if (!sliced || !sliced.gcode) return;
+    try { await deliver(new Blob([sliced.gcode], { type: 'text/x.gcode' }), outName() + '.gcode', 'text/x.gcode', 'gcode'); }
+    catch (e) { if (e && e.code === 'declined') setStatus('Save cancelled.'); else setStatus('Could not save: ' + (e && e.message || e), 'err'); }
+  };
+
+  function defaultName() {
+    const p = printer();
+    const base = (S.entries.length === 1 ? S.entries[0].src.title : 'Combined plate').replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'plate';
+    return p.keep ? `${base} - combined` : `${base} - ${p.model} ${p.nozzle}`;
+  }
+  function outName() {
+    const typed = $('fname').value.replace(/\.3mf(\.zip)?$/i, '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+    return typed || defaultName();
+  }
+  $('fname').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') ev.target.blur(); });
+  const FRIENDLY = { layer_height: 'Layer height', initial_layer_print_height: 'First layer height', wall_loops: 'Walls', top_shell_layers: 'Top layers', bottom_shell_layers: 'Bottom layers',
+    top_shell_thickness: 'Top thickness', bottom_shell_thickness: 'Bottom thickness', sparse_infill_density: 'Infill', sparse_infill_pattern: 'Infill pattern', top_surface_pattern: 'Top surface pattern',
+    bottom_surface_pattern: 'Bottom surface pattern', internal_solid_infill_pattern: 'Solid infill pattern', enable_support: 'Supports', support_type: 'Support type', support_style: 'Support style',
+    support_threshold_angle: 'Support angle', support_on_build_plate_only: 'Supports from plate only', support_top_z_distance: 'Support top gap', support_bottom_z_distance: 'Support bottom gap',
+    support_interface_top_layers: 'Support interface layers', support_interface_bottom_layers: 'Support base layers', support_object_xy_distance: 'Support side gap', brim_type: 'Brim', brim_width: 'Brim width',
+    brim_object_gap: 'Brim gap', seam_position: 'Seam', ironing_type: 'Ironing', only_one_wall_top: 'One wall on top', only_one_wall_first_layer: 'One wall on first layer', wall_generator: 'Wall generator',
+    detect_thin_wall: 'Thin walls', raft_layers: 'Raft layers', skirt_loops: 'Skirt loops', infill_direction: 'Infill angle', elefant_foot_compensation: 'Elephant foot compensation', print_sequence: 'Print order',
+    wall_sequence: 'Wall order', infill_wall_overlap: 'Infill overlap', fuzzy_skin: 'Fuzzy skin', fuzzy_skin_thickness: 'Fuzzy skin depth', fuzzy_skin_point_distance: 'Fuzzy skin spacing',
+    nozzle_temperature: 'Nozzle', nozzle_temperature_initial_layer: 'First layer nozzle', hot_plate_temp: 'Bed', hot_plate_temp_initial_layer: 'First layer bed', textured_plate_temp: 'Textured bed',
+    textured_plate_temp_initial_layer: 'First layer textured bed', cool_plate_temp: 'Cool plate', cool_plate_temp_initial_layer: 'First layer cool plate', eng_plate_temp: 'Engineering plate', eng_plate_temp_initial_layer: 'First layer engineering plate' };
+  const show = (v) => esc(Array.isArray(v) ? v[0] : v).replace(/^1$/, 'on').replace(/^0$/, 'off').replace(/_/g, ' ');
+  function renderReport(rep, p, slots) {
+    const box = $('report'), body = $('reportBody');
+    if (!rep) { box.hidden = true; return; }
+    const li = (a) => a.map((x) => `<li>${x}</li>`).join('');
+    const total = S.entries.reduce((t, e) => t + e.src.filaments.length, 0);
+    if (p.keep) {
+      body.innerHTML = `<div class="rep"><h4 class="k">Kept</h4><ul>${li([`All printer, print and filament settings from “${esc(rep.base)}”`])}</ul>
+        <h4 class="r">Changed</h4><ul>${li(['Models moved onto one plate', `${slots.length} filament${slots.length === 1 ? '' : 's'} used (of ${total} in the files)`])}</ul></div>`;
+      box.hidden = false; return;
+    }
+    const kept = (rep.kept || []).filter((k) => FRIENDLY[k.key]).map((k) => `${FRIENDLY[k.key]}: <b>${show(k.value)}</b>`);
+    const temps = (rep.temps || []).filter((t) => /^nozzle_temperature$|^hot_plate_temp$|^textured_plate_temp$/.test(t.key)).map((t) => `${p.semm ? 'IFS' : p.extruders > 1 ? 'Toolhead' : 'Filament'} ${t.slot} ${FRIENDLY[t.key].toLowerCase()}: <b>${esc(t.to)}°C</b> <span>(Flashforge default ${esc(t.from)}°C${t.asked ? `; model asked for ${esc(t.asked)}°C, kept within the filament’s safe range` : ''})</span>`);
+    const clampedLines = (rep.clamped || []).map((c) => `${FRIENDLY[c.key]}: <b>${esc(c.to)}</b> <span>(model asked for ${esc(c.from)}, ${esc(c.why)})</span>`);
+    const src = rep.baseMade ? `${esc(rep.baseMade.printer)}${rep.baseMade.nozzle ? ' ' + esc(rep.baseMade.nozzle) + ' mm' : ''}` : 'the original printer';
+    const fil = slots.map((s, i) => `${p.semm ? 'IFS' : p.extruders > 1 ? 'Toolhead' : 'Filament'} ${i + 1}: ${s.from && s.from.name ? esc(s.from.name.replace(/\s*@.*$/, '')) : esc((s.from && s.from.type) || 'filament')} → <b>${esc(String(s.preset).replace(/\s*@.*$/, ''))}</b>`);
+    body.innerHTML = `<div class="rep">
+      <h4 class="k">Kept from “${esc(rep.base || 'the model')}”</h4><ul>${kept.length || temps.length || clampedLines.length ? li(kept.concat(clampedLines, temps)) : '<li>Nothing differed from the Flashforge defaults</li>'}</ul>
+      ${rep.authoredOnly ? '<p class="note">Only settings the author changed are carried over; everything else uses Flashforge’s defaults.</p>' : ''}
+      <h4 class="r">Replaced</h4><ul>${li([`Printer: ${src} → <b>Flashforge ${esc(p.model)} ${esc(p.nozzle)} mm</b>`, 'Start and end G-code, build area and machine limits', `Print profile: <b>${esc($('process').value.replace(/\s*@.*$/, ''))}</b> as the base`].concat(fil))}</ul>
+      <h4 class="d">Dropped</h4><ul>${li(['Speeds and accelerations (Flashforge’s are used)', 'Bambu hardware settings (AMS, camera, timelapse)', 'Variable layer height and old plate pictures', `${Math.max(0, total - slots.length)} unused or merged filament${total - slots.length === 1 ? '' : 's'}`].concat(slots.length < 2 ? ['Purge tower (only one colour)'] : []))}</ul>
+    </div>`;
+    box.hidden = false;
+  }
+  function setStatus(t, cls) { const s = $('status'); s.textContent = t; s.className = 'status' + (cls ? ' ' + cls : ''); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  printerChanged();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => drawBed());
+})();
+</script>
+</body>
+</html>

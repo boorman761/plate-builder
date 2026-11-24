@@ -1,0 +1,24 @@
+// ==UserScript==
+// @name         Send to Plate Builder
+// @description  Adds a "Send to Plate Builder" button on 3D model sites (MakerWorld, Printables, Thingiverse and others), and lets Plate Builder send sliced prints to a Flashforge printer on your Wi-Fi.
+// @version      2.1.0
+// @match        https://magnificent-salamander-d85b41.netlify.app/*
+// @match        https://makerworld.com/*
+// @match        https://*.makerworld.com/*
+// @match        https://www.printables.com/*
+// @match        https://www.thingiverse.com/*
+// @match        https://www.crealitycloud.com/*
+// @match        https://www.makeronline.com/*
+// @match        https://space.snapmaker.com/*
+// @match        https://*.snapmaker.com/*
+// @match        https://www.myminifactory.com/*
+// @match        https://thangs.com/*
+// @match        https://www.creativefabrica.com/*
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+// @grant        GM.xmlHttpRequest
+// @grant        GM_xmlhttpRequest
+// @run-at       document-idle
+// @inject-into  content
+// @noframes
+// ==/UserScript==
+
