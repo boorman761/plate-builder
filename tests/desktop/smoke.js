@@ -22,7 +22,10 @@ const FIX = path.join(ROOT, 'tests', 'fixtures');
     res.setHeader('content-disposition', 'attachment; filename="pyr.obj"'); res.end(fs.readFileSync(path.join(FIX, 'pyr.obj')));
   }).listen(8099, '127.0.0.1');
 
-  const app = await _electron.launch({ executablePath: process.env.ELECTRON || require('electron'), args: [path.join(ROOT, 'desktop'), '--no-sandbox'], env: { ...process.env, HOME: home, PB_TEST: '1', XDG_DOWNLOAD_DIR: path.join(home, 'Downloads') } });
+  // a pretend Flash Studio that writes down what it was asked to open
+  const fakeFS = path.join(home, 'flash-studio.sh'), opened = path.join(home, 'opened.txt');
+  fs.writeFileSync(fakeFS, '#!/bin/sh\necho "$1" > ' + JSON.stringify(opened) + '\n'); fs.chmodSync(fakeFS, 0o755);
+  const app = await _electron.launch({ executablePath: process.env.ELECTRON || require('electron'), args: [path.join(ROOT, 'desktop'), '--no-sandbox'], env: { ...process.env, HOME: home, PB_TEST: '1', PB_FLASH_STUDIO: fakeFS, XDG_DOWNLOAD_DIR: path.join(home, 'Downloads') } });
   const win = await app.firstWindow();
   const errs = []; win.on('pageerror', (e) => errs.push(e.message));
   await win.waitForLoadState('domcontentloaded'); await win.waitForTimeout(1500);
@@ -45,17 +48,15 @@ const FIX = path.join(ROOT, 'tests', 'fixtures');
   const bw = await app.waitForEvent('window'); await bw.waitForLoadState(); await bw.click('#dl');
   await win.waitForTimeout(3000);
   ok('Find models: download added (4 parts)', /4 parts/.test(await win.textContent('#layoutMsg').catch(() => '')));
-  // 4. Build 3MF saves into Documents\Plate Builder
+  // 4. the main button saves the plate to Documents\Plate Builder and opens it in Flash Studio
+  ok('Main button says Open in Flash Studio', (await win.textContent('#go')).trim() === 'Open in Flash Studio');
+  ok('Slice button hidden', !(await win.isVisible('#slice')));
   await win.click('#go'); await win.waitForTimeout(3000);
   const docs = await app.evaluate(({ app }) => app.getPath('documents'));
   const out = path.join(docs, 'Plate Builder');
-  ok('Build 3MF saved to Documents\\Plate Builder', fs.existsSync(out) && fs.readdirSync(out).some((f) => f.endsWith('.3mf')));
-  console.log('  status:', await win.textContent('#status'), '| docs:', docs, '| share:', await win.evaluate(() => typeof navigator.canShare));
-  console.log('  saved:', fs.existsSync(out) ? fs.readdirSync(out) : []);
-  // 4b. slicing works in the app (module worker + WebAssembly over app://)
-  await win.click('#slice');
-  await win.waitForFunction(() => !document.getElementById('sliced').hidden || /Could not/.test(document.getElementById('status').textContent), null, { timeout: 120000 });
-  ok('Slicing works', await win.evaluate(() => !document.getElementById('sliced').hidden));
+  ok('Plate saved to Documents\\Plate Builder', fs.existsSync(out) && fs.readdirSync(out).some((f) => f.endsWith('.3mf')));
+  ok('Opened in Flash Studio', fs.existsSync(opened) && /Plate Builder.*\.3mf/.test(fs.readFileSync(opened, 'utf8')));
+  console.log('  status:', await win.textContent('#status'));
   // 5. printer: settings check goes through the app
   await win.evaluate(() => window.postMessage({ id: 't1', type: 'pb-settings' }, location.origin));
   await win.waitForSelector('#pbp'); await win.fill('#pbp-ip', '127.0.0.1'); await win.fill('#pbp-serial', 'SN'); await win.fill('#pbp-code', '1');

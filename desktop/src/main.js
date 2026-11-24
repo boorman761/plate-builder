@@ -1,9 +1,9 @@
 // Plate Builder for Windows: the same app as the phone version, plus what a computer can do.
-//  - Sends prints straight to Flashforge printers on your network (no add-on needed).
 //  - Watches your Downloads folder and puts new 3MF, STL, OBJ and zip files on the plate.
 //  - A built-in browser for the model sites: downloads from it go straight onto the plate.
-//  - Built files are saved to Documents\Plate Builder, ready to open in Flash Studio.
+//  - Built plates are saved to Documents\Plate Builder and opened in Flash Studio, which slices and sends.
 const { app, BrowserWindow, protocol, ipcMain, session, shell, Menu, dialog } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -26,7 +26,7 @@ const SITES = [
 
 // ---------- settings ----------
 const SETTINGS = path.join(app.getPath('userData'), 'settings.json');
-let settings = { watchDownloads: true };
+let settings = { watchDownloads: true, openInFlashStudio: true, flashStudio: '' };
 try { settings = Object.assign(settings, JSON.parse(fs.readFileSync(SETTINGS, 'utf8'))); } catch (e) { /* first run */ }
 const saveSettings = () => { try { fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2)); } catch (e) {} };
 const OUT_DIR = path.join(app.getPath('documents'), 'Plate Builder');
@@ -91,7 +91,7 @@ function sendFiles(files, from) {
   if (main.webContents.isLoading()) main.webContents.once('did-finish-load', () => setTimeout(go, 500)); else go();
 }
 
-// Built files (Build 3MF, Save G-code) go to Documents\Plate Builder.
+// Built files go to Documents\Plate Builder; a built plate (.3mf) opens in Flash Studio.
 function setUpAppSession() {
   session.defaultSession.on('will-download', (event, item) => {
     fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -99,18 +99,55 @@ function setUpAppSession() {
     let file = path.join(OUT_DIR, base), n = 1;
     while (fs.existsSync(file)) file = path.join(OUT_DIR, base.replace(/(\.[^.]+(\.txt|\.zip)?)$/, ` (${n++})$1`));
     item.setSavePath(file);
-    item.once('done', async (e, state) => {
+    item.once('done', (e, state) => {
       if (state !== 'completed' || !main) return;
-      const is3mf = /\.3mf$/i.test(file);
-      const r = await dialog.showMessageBox(main, {
-        type: 'info', title: 'Saved', message: 'Saved ' + path.basename(file),
-        detail: 'In Documents\\Plate Builder.' + (is3mf ? ' Open it in Flash Studio to slice and print.' : ''),
-        buttons: is3mf ? ['Open in Flash Studio', 'Show in folder', 'OK'] : ['Show in folder', 'OK'], defaultId: 0, cancelId: is3mf ? 2 : 1,
-      });
-      if (is3mf && r.response === 0) { const err = await shell.openPath(file); if (err) dialog.showErrorBox('Couldn’t open it', err + '\n\nOpen Flash Studio and use File → Import instead.'); }
-      else if ((is3mf && r.response === 1) || (!is3mf && r.response === 0)) shell.showItemInFolder(file);
+      if (/\.3mf$/i.test(file) && settings.openInFlashStudio) return openInFlashStudio(file);
+      status(`Saved ${path.basename(file)} in Documents\\Plate Builder.`, 'ok');
+      shell.showItemInFolder(file);
     });
   });
+}
+const status = (text, kind) => main && main.webContents.send('pb-status', text, kind);
+
+// ---------- Flash Studio ----------
+// Looks in the usual install folders for Flash Studio Desktop (or Orca-Flashforge, its old name).
+function findFlashStudio() {
+  if (process.env.PB_TEST && process.env.PB_FLASH_STUDIO) return process.env.PB_FLASH_STUDIO;
+  if (settings.flashStudio && fs.existsSync(settings.flashStudio)) return settings.flashStudio;
+  const roots = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs')].filter(Boolean);
+  const exe = /^(flash[ _-]?studio|orca[ _-]?flashforge)[^\\/]*\.exe$/i, dirLike = /flash|orca/i;
+  const walk = (dir, depth) => {
+    let list; try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return null; }
+    for (const d of list) if (d.isFile() && exe.test(d.name) && !/unins/i.test(d.name)) return path.join(dir, d.name);
+    if (depth >= 3) return null;
+    for (const d of list) if (d.isDirectory() && (depth > 0 || dirLike.test(d.name))) { const f = walk(path.join(dir, d.name), depth + 1); if (f) return f; }
+    return null;
+  };
+  for (const r of roots) { const f = walk(r, 0); if (f) { settings.flashStudio = f; saveSettings(); return f; } }
+  return null;
+}
+async function chooseFlashStudio() {
+  const r = await dialog.showOpenDialog(main, { title: 'Where is Flash Studio?', properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe'] }], defaultPath: process.env.ProgramFiles });
+  if (r.canceled || !r.filePaths[0]) return null;
+  settings.flashStudio = r.filePaths[0]; saveSettings(); return settings.flashStudio;
+}
+async function openInFlashStudio(file) {
+  const exe = findFlashStudio();
+  if (exe) {
+    try {
+      spawn(exe, [file], { detached: true, stdio: 'ignore' }).unref();
+      status(`Opened ${path.basename(file)} in Flash Studio. It's also saved in Documents\\Plate Builder.`, 'ok');
+      return;
+    } catch (e) { /* fall through */ }
+  }
+  const r = await dialog.showMessageBox(main, {
+    type: 'question', title: 'Flash Studio not found', message: 'Saved ' + path.basename(file) + ', but I couldn’t find Flash Studio.',
+    detail: 'Show me where it is once and I’ll remember. Or open the file with whatever Windows uses for 3MF files.',
+    buttons: ['Choose Flash Studio…', 'Open with Windows', 'Show in folder'], defaultId: 0, cancelId: 2,
+  });
+  if (r.response === 0) { if (await chooseFlashStudio()) return openInFlashStudio(file); }
+  else if (r.response === 1) shell.openPath(file);
+  else shell.showItemInFolder(file);
 }
 
 // ---------- the Downloads folder ----------
@@ -169,6 +206,9 @@ function buildMenu() {
   const t = [
     { label: 'File', submenu: [
       { label: 'Watch Downloads folder', type: 'checkbox', checked: settings.watchDownloads, click: (m) => { settings.watchDownloads = m.checked; saveSettings(); watchDownloads(m.checked); } },
+      { label: 'Open built plates in Flash Studio', type: 'checkbox', checked: settings.openInFlashStudio, click: (m) => { settings.openInFlashStudio = m.checked; saveSettings(); } },
+      { label: 'Choose Flash Studio…', click: () => chooseFlashStudio() },
+      { type: 'separator' },
       { label: 'Open Downloads folder', click: () => shell.openPath(app.getPath('downloads')) },
       { label: 'Open saved files (Documents\\Plate Builder)', click: () => { fs.mkdirSync(OUT_DIR, { recursive: true }); shell.openPath(OUT_DIR); } },
       { type: 'separator' }, { role: 'quit' },
@@ -197,4 +237,4 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (!main) createMain(); });
 });
 app.on('window-all-closed', () => app.quit());
-if (process.env.PB_TEST) global.__pb = { openBrowse, sendFiles };
+if (process.env.PB_TEST) global.__pb = { openBrowse, sendFiles, findFlashStudio };

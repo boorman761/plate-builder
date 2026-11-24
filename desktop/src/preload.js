@@ -17,8 +17,13 @@ const GM = {
 };
 const toArrayBuffer = (u8) => u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
 
+ipcRenderer.on('pb-status', (e, text, kind) => {
+  const el = document.getElementById('status'); if (el) { el.textContent = text; el.className = 'status' + (kind ? ' ' + kind : ''); }
+});
 window.addEventListener('DOMContentLoaded', () => {
   document.documentElement.dataset.pbDesktop = '1';
+  // on the computer, Build 3MF saves the file and opens it in Flash Studio
+  const go = document.getElementById('go'); if (go) go.textContent = 'Open in Flash Studio';
   // no website hands files over by message here: they come from the app (Downloads folder, Find models window)
   const bridge = printerBridge(/^$/, GM, JSZip);
   ipcRenderer.on('pb-incoming', (e, files) => {

@@ -27,7 +27,7 @@ addon/src/    the add-on, in parts
   bridge.js         runs on Plate Builder itself: printer sending, zips, files from other sites.
                     The desktop app uses this same file.
 desktop/      the Windows app (Electron)
-  src/main.js       serves the web app, Find models window, Downloads watching, printer requests
+  src/main.js       serves the web app, Find models window, Downloads watching, opening plates in Flash Studio
   src/preload.js    plugs bridge.js into the app
 scripts/build.py  builds dist/web and dist/addon
 tests/        fixtures and Playwright tests (web, add-on, desktop)

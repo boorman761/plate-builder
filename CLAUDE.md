@@ -35,6 +35,5 @@ Read README.md for the layout. This file holds what was learned the hard way.
 - Serves dist/web over app://plate-builder so module workers and WebAssembly work.
 - The Find models window uses a persistent session ('persist:sites'); downloads of 3MF/STL/OBJ/zip go straight onto the plate.
 - Watches the Downloads folder for new model files (File menu toggle).
-- Built files save to Documents\Plate Builder; .3mf files can be opened in Flash Studio from the prompt.
-- Printer requests go through the main process and are limited to private addresses on port 8898.
-- Next: slice with Flash Studio Desktop / Orca from the command line for proper multi-colour G-code.
+- Phil doesn't want direct printer sending on the desktop: Flash Studio slices and sends. The main button is "Open in Flash Studio": it saves the plate to Documents\Plate Builder and launches Flash Studio with it (found in Program Files / LocalAppData\Programs, or chosen once via File → Choose Flash Studio…). Slice and Read-from-printer are hidden (html[data-pb-desktop]).
+- The printer bridge code is still loaded (shared with the add-on); its requests are limited to private addresses on port 8898.

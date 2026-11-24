@@ -141,6 +141,9 @@
     body > .bar { left: auto; right: max(0px, calc((100vw - 1440px) / 2)); width: 492px; }
     body > .bar .in { max-width: none; }
   }
+  /* desktop app: Flash Studio does the slicing and sending */
+  html[data-pb-desktop] #slice, html[data-pb-desktop] #readLoaded { display: none; }
+  html[data-pb-desktop] .bar .acts { grid-template-columns: 1fr; }
   /* bottom bar */
   .bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--page) 24%); }
   .bar .in { max-width: 620px; margin: 0 auto; display: grid; gap: 8px; }
