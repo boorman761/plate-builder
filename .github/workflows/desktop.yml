@@ -55,12 +55,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VER=$(node -p "require('./package.json').version")
+          npm run dist
+          ls dist
+          FILES="dist/Plate-Builder-Setup-$VER.exe dist/Plate-Builder-Setup-$VER.exe.blockmap dist/latest.yml"
           if gh release view "v$VER" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "v$VER is already released: building only"; npm run dist
+            echo "v$VER exists: refreshing its files"
+            gh release upload "v$VER" $FILES --clobber -R "$GITHUB_REPOSITORY"
           else
             echo "Publishing v$VER"
             git tag "v$VER" && git push origin "v$VER"
-            npm run release
+            gh release create "v$VER" $FILES -R "$GITHUB_REPOSITORY" --title "Plate Builder $VER" --notes "Installed copies of Plate Builder update to this version by themselves."
           fi
       - uses: actions/upload-artifact@v4
         with:
