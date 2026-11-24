@@ -1,7 +1,7 @@
 {
   "name": "plate-builder-desktop",
   "productName": "Plate Builder",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Combine 3D model files onto one plate and convert them for Flashforge printers.",
   "main": "src/main.js",
   "private": true,

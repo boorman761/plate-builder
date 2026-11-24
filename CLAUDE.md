@@ -36,4 +36,5 @@ Read README.md for the layout. This file holds what was learned the hard way.
 - The Find models window uses a persistent session ('persist:sites'); downloads of 3MF/STL/OBJ/zip go straight onto the plate.
 - Watches the Downloads folder for new model files (File menu toggle).
 - Phil doesn't want direct printer sending on the desktop: Flash Studio slices and sends. The main button is "Open in Flash Studio": it saves the plate to Documents\Plate Builder and launches Flash Studio with it (found in Program Files / LocalAppData\Programs, or chosen once via File → Choose Flash Studio…). Slice and Read-from-printer are hidden (html[data-pb-desktop]).
+- With the printer set to "Bambu (keep original settings)" the button becomes "Open in Bambu Studio" and launches Bambu Studio instead (File → Choose Bambu Studio… if it isn't found). The preload tells main which slicer via the 'pb-target' message.
 - The printer bridge code is still loaded (shared with the add-on); its requests are limited to private addresses on port 8898.

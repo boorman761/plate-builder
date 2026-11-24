@@ -22,8 +22,13 @@ ipcRenderer.on('pb-status', (e, text, kind) => {
 });
 window.addEventListener('DOMContentLoaded', () => {
   document.documentElement.dataset.pbDesktop = '1';
-  // on the computer, Build 3MF saves the file and opens it in Flash Studio
-  const go = document.getElementById('go'); if (go) go.textContent = 'Open in Flash Studio';
+  // on the computer, Build 3MF saves the file and opens it in Flash Studio, or Bambu Studio for a Bambu plate
+  const go = document.getElementById('go'), model = document.getElementById('model');
+  const target = () => (model && model.value === '__keep' ? 'bambu' : 'flash');
+  const label = () => { if (go) go.textContent = target() === 'bambu' ? 'Open in Bambu Studio' : 'Open in Flash Studio'; ipcRenderer.send('pb-target', target()); };
+  if (model) model.addEventListener('change', label);
+  if (go) go.addEventListener('click', () => ipcRenderer.send('pb-target', target()), true);
+  label();
   // no website hands files over by message here: they come from the app (Downloads folder, Find models window)
   const bridge = printerBridge(/^$/, GM, JSZip);
   ipcRenderer.on('pb-incoming', (e, files) => {

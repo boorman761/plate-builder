@@ -25,7 +25,9 @@ const FIX = path.join(ROOT, 'tests', 'fixtures');
   // a pretend Flash Studio that writes down what it was asked to open
   const fakeFS = path.join(home, 'flash-studio.sh'), opened = path.join(home, 'opened.txt');
   fs.writeFileSync(fakeFS, '#!/bin/sh\necho "$1" > ' + JSON.stringify(opened) + '\n'); fs.chmodSync(fakeFS, 0o755);
-  const app = await _electron.launch({ executablePath: process.env.ELECTRON || require('electron'), args: [path.join(ROOT, 'desktop'), '--no-sandbox'], env: { ...process.env, HOME: home, PB_TEST: '1', PB_FLASH_STUDIO: fakeFS, XDG_DOWNLOAD_DIR: path.join(home, 'Downloads') } });
+  const fakeBS = path.join(home, 'bambu-studio.sh'), openedB = path.join(home, 'openedB.txt');
+  fs.writeFileSync(fakeBS, '#!/bin/sh\necho "$1" > ' + JSON.stringify(openedB) + '\n'); fs.chmodSync(fakeBS, 0o755);
+  const app = await _electron.launch({ executablePath: process.env.ELECTRON || require('electron'), args: [path.join(ROOT, 'desktop'), '--no-sandbox'], env: { ...process.env, HOME: home, PB_TEST: '1', PB_FLASH_STUDIO: fakeFS, PB_BAMBU_STUDIO: fakeBS, XDG_DOWNLOAD_DIR: path.join(home, 'Downloads') } });
   const win = await app.firstWindow();
   const errs = []; win.on('pageerror', (e) => errs.push(e.message));
   await win.waitForLoadState('domcontentloaded'); await win.waitForTimeout(1500);
@@ -57,6 +59,15 @@ const FIX = path.join(ROOT, 'tests', 'fixtures');
   ok('Plate saved to Documents\\Plate Builder', fs.existsSync(out) && fs.readdirSync(out).some((f) => f.endsWith('.3mf')));
   ok('Opened in Flash Studio', fs.existsSync(opened) && /Plate Builder.*\.3mf/.test(fs.readFileSync(opened, 'utf8')));
   console.log('  status:', await win.textContent('#status'));
+  // 4c. a Bambu plate opens in Bambu Studio
+  await win.setInputFiles('#pick', path.join(FIX, 'bambu_real.3mf')); await win.waitForTimeout(1500);
+  await win.selectOption('#model', '__keep'); await win.waitForTimeout(500);
+  ok('Bambu: button says Open in Bambu Studio', (await win.textContent('#go')).trim() === 'Open in Bambu Studio');
+  await win.click('#go'); await win.waitForTimeout(3000);
+  ok('Bambu: opened in Bambu Studio', fs.existsSync(openedB) && /\.3mf/.test(fs.readFileSync(openedB, 'utf8')));
+  console.log('  status:', await win.textContent('#status'));
+  await win.selectOption('#model', 'Creator 5 Pro'); await win.waitForTimeout(300);
+  ok('Back to Flash Studio label', (await win.textContent('#go')).trim() === 'Open in Flash Studio');
   // 5. printer: settings check goes through the app
   await win.evaluate(() => window.postMessage({ id: 't1', type: 'pb-settings' }, location.origin));
   await win.waitForSelector('#pbp'); await win.fill('#pbp-ip', '127.0.0.1'); await win.fill('#pbp-serial', 'SN'); await win.fill('#pbp-code', '1');
