@@ -58,7 +58,9 @@ jobs:
           if gh release view "v$VER" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "v$VER is already released: building only"; npm run dist
           else
-            echo "Publishing v$VER"; npm run release
+            echo "Publishing v$VER"
+            git tag "v$VER" && git push origin "v$VER"
+            npm run release
           fi
       - uses: actions/upload-artifact@v4
         with:
