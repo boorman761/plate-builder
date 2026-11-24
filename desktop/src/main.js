@@ -4,6 +4,7 @@
 //  - Built plates are saved to Documents\Plate Builder and opened in Flash Studio (or Bambu Studio for Bambu plates).
 const { app, BrowserWindow, protocol, ipcMain, session, shell, Menu, dialog } = require('electron');
 const { spawn } = require('child_process');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -209,6 +210,36 @@ ipcMain.handle('pb-http', async (e, o) => {
 });
 ipcMain.on('pb-bridge-path', (e) => { e.returnValue = BRIDGE; });
 
+
+// ---------- updates ----------
+// New versions are published as GitHub releases (see .github/workflows/desktop.yml). The app checks at
+// start-up and every few hours, downloads in the background, and offers to restart when it's ready.
+let updateChecking = false, manualCheck = false;
+function setUpUpdates() {
+  if (DEV) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('update-available', (info) => status(`Downloading Plate Builder ${info.version}…`));
+  autoUpdater.on('update-not-available', () => { if (manualCheck) dialog.showMessageBox(main, { type: 'info', title: 'Up to date', message: `You have the latest version (${app.getVersion()}).` }); manualCheck = false; });
+  autoUpdater.on('error', (err) => { if (manualCheck) dialog.showMessageBox(main, { type: 'warning', title: 'Couldn’t check for updates', message: 'Couldn’t check for updates.', detail: String(err && err.message || err).slice(0, 300) }); manualCheck = false; });
+  autoUpdater.on('update-downloaded', async (info) => {
+    manualCheck = false;
+    const r = await dialog.showMessageBox(main, {
+      type: 'info', title: 'Update ready', message: `Plate Builder ${info.version} is ready.`,
+      detail: 'Restart now to use it, or it will be installed next time you close Plate Builder.',
+      buttons: ['Restart now', 'Later'], defaultId: 0, cancelId: 1,
+    });
+    if (r.response === 0) setImmediate(() => autoUpdater.quitAndInstall());
+  });
+  const check = () => { autoUpdater.checkForUpdates().catch(() => {}); };
+  setTimeout(check, 5000);
+  setInterval(check, 4 * 60 * 60 * 1000);
+}
+function checkForUpdatesNow() {
+  if (DEV) return dialog.showMessageBox(main, { type: 'info', message: 'Updates only work in the installed app.' });
+  manualCheck = true; autoUpdater.checkForUpdates().catch(() => {});
+}
+
 // ---------- menu ----------
 function buildMenu() {
   const t = [
@@ -232,6 +263,10 @@ function buildMenu() {
     ] },
     { label: 'View', submenu: [{ role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' }, { type: 'separator' }, { role: 'togglefullscreen' }, { role: 'toggleDevTools' }] },
     { role: 'windowMenu' },
+    { label: 'Help', submenu: [
+      { label: 'Check for updates', click: () => checkForUpdatesNow() },
+      { label: 'About Plate Builder', click: () => dialog.showMessageBox(main, { type: 'info', title: 'Plate Builder', message: 'Plate Builder ' + app.getVersion() }) },
+    ] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(t));
 }
@@ -243,6 +278,7 @@ app.whenReady().then(() => {
   buildMenu();
   createMain();
   watchDownloads(settings.watchDownloads);
+  setUpUpdates();
   app.on('activate', () => { if (!main) createMain(); });
 });
 app.on('window-all-closed', () => app.quit());

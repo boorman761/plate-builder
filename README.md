@@ -41,13 +41,13 @@ cd desktop && npm ci && npm start   # run the desktop app
 cd desktop && npm run dist          # Windows installer in desktop/dist (on Windows)
 ```
 
-GitHub Actions builds the Windows installer on every push to `main` (download it from the run's *Artifacts*), and publishes a Release when you push a tag such as `v0.2.0`.
+GitHub Actions builds the Windows installer on every push to `main`. When the version in `desktop/package.json` is new, it publishes a release `v<version>`, and installed copies of the app update themselves from it.
 
 ## Updating each version
 
 - **Web app:** run the build, then drag `dist/web` (zipped) onto the Netlify site's Deploys page. Each deploy uses Netlify credits, so batch changes.
 - **Add-on:** send yourself `dist/addon/Send to Plate Builder.user.js` and save it into the *Userscripts* folder in Files (Replace). No deploy needed.
-- **Desktop app:** install the new `Plate Builder Setup.exe` from the latest Actions run or Release.
+- **Desktop app:** bump the version in `desktop/package.json` and push. The app updates itself (Help → Check for updates to check straight away).
 
 ## Tests
 

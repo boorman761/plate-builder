@@ -1,11 +1,10 @@
 name: Desktop app
 
-# Builds the Windows installer. Runs on every push to main (download it from the run's Artifacts),
-# and publishes a Release when you push a tag like v0.2.0.
+# Builds the Windows installer on every push to main. When desktop/package.json has a new version,
+# it publishes a GitHub release (v<version>), which installed copies of the app update themselves from.
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -49,13 +48,19 @@ jobs:
         with: { python-version: '3.12' }
       - run: npm ci
         working-directory: desktop
-      - run: npm run dist
+      - name: Build, and publish a release if this version is new
         working-directory: desktop
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          if gh release view "v$VER" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$VER is already released: building only"; npm run dist
+          else
+            echo "Publishing v$VER"; npm run release
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: Plate-Builder-Setup
           path: desktop/dist/*.exe
-      - if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: desktop/dist/*.exe
